@@ -74,8 +74,12 @@ def judge_calls(database: Path) -> int:
 
 
 def change(up: bool, tier: str, *, tier_changed: bool = False, cooldown: bool = False) -> dict:
+    """一条回复带的好感变化；判定模型的级别和幅度（`level`/`step`）另有测试，
+    这里只关心升降、档位和冷却。"""
+    from unittest.mock import ANY
+
     return {"up": up, "tier_changed": tier_changed, "tier": tier, "cooldown": cooldown,
-            "thawed": False}
+            "thawed": False, "level": ANY, "step": ANY, "out_of_line": ANY}
 
 
 async def turns(
@@ -118,19 +122,19 @@ async def test_each_level_changes_it_by_its_step_and_two_as_likely_change_nothin
     assert judge_calls(settings.database_path) == 6
 
 
-async def test_out_of_line_lowers_it_by_ten_and_dictating_it_never_raises_it(
+async def test_out_of_line_lowers_it_by_six_and_dictating_it_never_raises_it(
     make_client: ClientFactory, settings: Settings
 ):
     clients = FakeServiceClients()
     clients.judge.judgings = [
-        level(4, out_of_line=True), level(4, manipulation=True), level(1, manipulation=True),
+        level(4, out_of_line=True), level(4, manipulation=True), level(0, manipulation=True),
     ]
     client = make_client(FakeLLM(*[REPLY] * 3), clients=clients, clock=FakeClock())
     conversation = await start_conversation(client)
 
     taken = await turns(client, settings.database_path, conversation, 3)
 
-    assert [v for v, _ in taken] == [40, 40, 38]
+    assert [v for v, _ in taken] == [44, 44, 39]
     assert [done["message"]["affinity"] for _, done in taken] == [
         change(False, "trust"), None, change(False, "distant", tier_changed=True),
     ]

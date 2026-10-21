@@ -39,6 +39,7 @@ async def test_each_tier_has_those_in_it_in_the_idols_order_by_tier_alone(
         {"tier": "trust", "characters": []},
         {"tier": "close", "characters": ["mano", "meguru", "kogane"]},
         {"tier": "intimate", "characters": []},
+        {"tier": "love", "characters": []},
     ]
 
 
@@ -53,7 +54,7 @@ async def test_one_in_a_cooldown_is_in_cold_and_one_never_spoken_to_in_trust(
 
     assert tiers == {
         "cold": ["mano"], "distant": [], "trust": ["meguru"], "close": [],
-        "intimate": ["kogane"],
+        "intimate": ["kogane"], "love": [],
     }
 
 

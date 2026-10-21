@@ -465,8 +465,11 @@ async def test_a_turn_with_a_follow_on_changes_affinity_as_the_whole_of_it_is_ju
     assert FEELINGS[0] in about_now(llm, 0)
     assert FEELINGS[4] in about_now(llm, 1)
     assert FEELINGS[0] not in about_now(llm, 1)
+    from unittest.mock import ANY
+
     assert done["message"]["affinity"] == {
-        "up": True, "tier_changed": False, "tier": "trust", "cooldown": False, "thawed": False
+        "up": True, "tier_changed": False, "tier": "trust", "cooldown": False, "thawed": False,
+        "level": ANY, "step": ANY, "out_of_line": False,
     }
     assert done["affinity"] == {"tier": "trust", "cooldown_until": None}
 

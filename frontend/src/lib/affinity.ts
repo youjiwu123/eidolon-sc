@@ -5,15 +5,44 @@
 import { api, json } from "@/lib/api";
 import { copy } from "@/i18n";
 
-export const TIERS = ["cold", "distant", "trust", "close", "intimate"] as const;
-/** 冷淡、疏远、信任、亲近、亲密，从低到高。 */
+export const TIERS = ["cold", "distant", "trust", "close", "intimate", "love"] as const;
+/** 冷淡、疏远、信任、亲近、亲密、爱意，从低到高。 */
 export type Tier = (typeof TIERS)[number];
 
 /** 读状态接口给的：档位，冷却中的解除时刻（ISO，不在冷却是 null）。 */
 export type AffinityStatus = { tier: Tier; cooldown_until: string | null };
 
-/** 一次变化：升还是降、变化后的档位、有没有跨档、是不是因此进了冷却，或者（只有送礼会）解除了冷却。不带原因和变化量。 */
-export type AffinityChange = { up: boolean; tier_changed: boolean; tier: Tier; cooldown: boolean; thawed: boolean };
+/** 一次变化：升还是降、变化后的档位、有没有跨档、是不是因此进了冷却，或者（只有送礼会）解除了冷却。
+ * `level`/`step` 是判断模型对这一轮的打分和实际变化量，用来在她那条回复下写清原因；礼物没有。 */
+export type AffinityChange = {
+  up: boolean;
+  tier_changed: boolean;
+  tier: Tier;
+  cooldown: boolean;
+  thawed: boolean;
+  level?: number | null;
+  step?: number | null;
+  out_of_line?: boolean;
+};
+
+/** 判断模型的分级，从「伤到她」到「让她很高兴」；和她说的话一致（backend `_FEELINGS`）。 */
+export function feelingText(change: AffinityChange): string {
+  const said = copy.conversation.affinity.feelings;
+  if (change.out_of_line) return said.outOfLine;
+  const level = change.level;
+  if (level === null || level === undefined) return change.up ? said.happier : said.unhappier;
+  return said.byLevel[Math.min(Math.max(level, 0), 4)] ?? (change.up ? said.happier : said.unhappier);
+}
+
+/** 她那条回复下面那行：「好感 ▲ +1 · 有点开心」这种。没有变化量就只说感受。 */
+export function changeNote(change: AffinityChange): string {
+  const t = copy.conversation.affinity.note;
+  const feeling = feelingText(change);
+  const step = change.step;
+  if (step === null || step === undefined || step === 0) return feeling;
+  const rounded = Math.round(step * 10) / 10;
+  return t(rounded > 0 ? `+${rounded}` : `${rounded}`, feeling);
+}
 
 /** 胶囊上的那句话：进了或解除了冷却最先说，其次跨档写出新档名，同档只说开心或不高兴。 */
 export function cueText(change: AffinityChange, name: string): string {
@@ -26,7 +55,7 @@ export function cueText(change: AffinityChange, name: string): string {
 }
 
 /** 五档的心形：冷淡 HeartOff、疏远 HeartCrack、信任空心、亲近半心（空心叠一层只露下半的实心）、亲密实心。 */
-export type Heart = "off" | "crack" | "outline" | "half" | "filled";
+export type Heart = "off" | "crack" | "outline" | "half" | "filled" | "double";
 
 const HEARTS: Record<Tier, Heart> = {
   cold: "off",
@@ -34,6 +63,7 @@ const HEARTS: Record<Tier, Heart> = {
   trust: "outline",
   close: "half",
   intimate: "filled",
+  love: "double",
 };
 
 export function heartOf(tier: Tier): Heart {

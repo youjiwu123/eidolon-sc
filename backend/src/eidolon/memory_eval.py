@@ -704,6 +704,7 @@ class _RecordedJudge:
         text: str,
         affinity: bool = False,
         photo: bool = False,
+        tier: str | None = None,
     ) -> tuple[Need, None, bool]:
         """Never about affinity nor photos, which the memory eval has nothing to do with."""
         try:

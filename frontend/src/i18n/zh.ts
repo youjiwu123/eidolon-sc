@@ -249,7 +249,7 @@ export const zh = {
     ownLLMExempts: "带上自己的 LLM，文字对话就不受限额。",
     /** 页首的好感度标识和它点开的说明（GLOSSARY.md「好感度」「冷却」）。只说档位，不说数值。 */
     affinity: {
-      tiers: { cold: "冷淡", distant: "疏远", trust: "信任", close: "亲近", intimate: "亲密" },
+      tiers: { cold: "冷淡", distant: "疏远", trust: "信任", close: "亲近", intimate: "亲密", love: "爱意" },
       /** 每一档的大意，写在说明里档名下面。 */
       notes: {
         cold: "她对你明显冷淡，话很少。",
@@ -257,6 +257,7 @@ export const zh = {
         trust: "你们一直以来的关系。",
         close: "她比平时更放松，更愿意和你说心里话。",
         intimate: "她非常信赖你，会说平时不轻易说的心事。",
+        love: "她已经把心意说出口了：会更直白地想你、黏你，也会吃醋。",
       },
       label: (tier: string) => `你们的关系：${tier}`,
       title: (tier: string) => `你们现在的关系：${tier}`,
@@ -264,7 +265,7 @@ export const zh = {
       coolingNote: (until: string) => `${until} 以后可以再找她。送她一件礼物，她会消气得快一些。`,
       /** 冷却中换掉输入栏的那一行。 */
       coolingComposer: (name: string, until: string) => `${name}现在不想说话。${until} 以后可以再找她`,
-      tiersLabel: "五个档位",
+      tiersLabel: "六个档位",
       rule: "她对你的态度会随你说的话变化。低于「信任」时，不联系也会慢慢回到「信任」。",
       /** 解除时刻：按制作人的时区写成今天或明天加时刻。 */
       today: "今天",
@@ -278,6 +279,15 @@ export const zh = {
         unhappier: (name: string) => `${name}有点不高兴`,
         /** 送礼让她解除了冷却。 */
         thawed: (name: string) => `${name}愿意和你说话了`,
+      },
+      /** 她那条回复下面那行：判断模型给这一轮打的分，以及实际变化量。 */
+      note: (step: string, feeling: string) => `好感 ${step} · ${feeling}`,
+      /** 判断模型的分级，从「伤到你」到「很高兴」；和她被告诉的话一致（backend `_FEELINGS`）。 */
+      feelings: {
+        byLevel: ["伤到了她", "让她有点不舒服", "没什么感觉", "有点开心", "很开心，觉得被在意"],
+        happier: "有点开心",
+        unhappier: "有点不高兴",
+        outOfLine: "很受伤、很生气",
       },
     },
     /** 页首的「换衣装」和它打开的面板（spec「衣装与换衣装」）。 */

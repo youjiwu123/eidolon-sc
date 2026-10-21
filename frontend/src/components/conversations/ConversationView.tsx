@@ -37,7 +37,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { copy } from "@/i18n";
-import { cueText, untilText } from "@/lib/affinity";
+import { cueText, changeNote, untilText } from "@/lib/affinity";
 import type { Character } from "@/lib/api";
 import type { Entry } from "@/lib/conversationLog";
 import type { Failure } from "@/lib/failure";
@@ -620,10 +620,14 @@ function Messages({
                 </MessageScrollerItem>
               ) : line.kind === "cue" ? (
                 <MessageScrollerItem key={line.key} className="mt-2 flex justify-center">
-                  {/* 好感度的变化胶囊：一个升降小箭头加一句话 */}
+                  {/* 好感度的变化胶囊：一个升降小箭头加一句话；有判断模型的分级时，
+                      后面补上「好感 -2 · 让她有点不舒服」，看得出为什么变 */}
                   <Capsule>
                     <CueArrowIcon up={line.change.up} className="size-3" />
                     {cueText(line.change, character.name)}
+                    {line.change.step != null && (
+                      <span className="text-muted-foreground">{changeNote(line.change)}</span>
+                    )}
                   </Capsule>
                 </MessageScrollerItem>
               ) : line.kind === "photos-used-up" ? (

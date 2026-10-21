@@ -64,6 +64,7 @@ WINDOW = timedelta(days=7)
 
 INTERVALS: dict[Tier, tuple[timedelta, timedelta]] = {
     "intimate": (timedelta(hours=3), timedelta(hours=6)),
+    "love": (timedelta(hours=3), timedelta(hours=6)),
     "close": (timedelta(hours=8), timedelta(hours=16)),
     "trust": (timedelta(hours=20), timedelta(hours=36)),
 }

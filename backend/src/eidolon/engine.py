@@ -351,12 +351,13 @@ async def _judged(
     text: str,
     affinity: bool,
     photo: bool,
+    tier: str | None = None,
 ) -> tuple[Judged | None, bool]:
     """Asked about `affinity`, what saying `text` does to her affinity (None if not, or if it
     cannot be told); asked about `photo`, whether it asks her for one (no if not, or if it
-    cannot be told)."""
+    cannot be told). `tier` is how close they are, which relaxes the questions above trust."""
     try:
-        return await judge.judge(character, history, text, affinity, photo)
+        return await judge.judge(character, history, text, affinity, photo, tier=tier)
     except JudgeError:
         log.warning("judging apart failed; affinity stays as it is, and no photo", exc_info=True)
         return None, False
@@ -621,7 +622,15 @@ class ConversationEngine:
         judged_apart = None
         if (judging or asking_photo) and self._retrieval is None and self._affinity_judge:
             judged_apart = asyncio.ensure_future(
-                _judged(self._affinity_judge, character, history, text, judging, asking_photo)
+                _judged(
+                    self._affinity_judge,
+                    character,
+                    history,
+                    text,
+                    judging,
+                    asking_photo,
+                    tier=affinity.tier if affinity is not None else None,
+                )
             )
         try:
             profile = self._store.get_profile(conversation.user_id)
@@ -631,7 +640,13 @@ class ConversationEngine:
             )
             retrieved = (
                 await self._retrieval.retrieve(
-                    character, history, text, memory, judging, asking_photo
+                    character,
+                    history,
+                    text,
+                    memory,
+                    judging,
+                    asking_photo,
+                    tier=affinity.tier if affinity is not None else None,
                 )
                 if self._retrieval
                 else Retrieved(None)

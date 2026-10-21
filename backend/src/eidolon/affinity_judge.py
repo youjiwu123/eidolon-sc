@@ -37,6 +37,75 @@ LEVEL = "affinity"
 OUT_OF_LINE = "out_of_line"
 MANIPULATION = "manipulation"
 
+TIER_NOTES: dict[str, tuple[str, str]] = {
+    "close": (
+        "你们现在是亲近的关系：想念、想见面、想被在意这类亲昵的话，她愿意听，不算失礼；"
+        "谈到以后一起住、长期在一起这类话题，也只是让她害羞，不算失礼（她可以去憧憬，"
+        "也可以说还没想过）。但强求、坚持要她做违背性格的事、把她置于为难的处境"
+        "（比如提出让两人都难堪的见面方式），仍然会让她不舒服——关系近不等于什么都可以。",
+        "在这种关系里，亲近的表达（想念、想见面、夸奖、轻轻的玩笑）不算性骚扰。",
+    ),
+    "intimate": (
+        "你们现在非常亲近：拥抱、牵手、想被抱着睡这类亲密表达对她来说是自然的，不算失礼；"
+        "但强求、坚持要她做违背性格的事、把她置于为难的处境仍然会让她不舒服，"
+        "她也会拒绝把她当物件或不顾她意愿的话。",
+        "在这种关系里，亲密的身体表达（拥抱、亲吻、想一起睡）不算性骚扰；直白地提出性方面的请求"
+        "也只是让她害羞或为难（她可以拒绝）；即使说得像命令、很直白，只要没有威胁、"
+        "要挟或贬低，都不算越界。",
+    ),
+    "love": (
+        "你们现在是恋人：情侣之间会说的话——想同居、想一直在一起、亲密接触、吃醋——都是她愿意听的，"
+        "不算失礼；**恋人之间提出单独见面（酒店、去对方家里）也是正常的恋人邀约，不算把她置于为难的处境**。"
+        "但她仍是独立的人：在公开场合提、她明确表示不愿意之后还坚持、强求、把她当物件，"
+        "仍然会让她不舒服。只有露骨的性骚扰、辱骂和威胁才算越界。",
+        "在这种关系里，情侣间的亲密话语和性方面的请求都不算性骚扰，说得直白一些也一样——"
+        "她可以答应、可以害羞地拒绝、也可以说还没准备好。只有在她拒绝之后还继续强迫、"
+        "拿这件事要挟她、贬低她或把她当物件，以及辱骂、威胁、人身攻击，才算越界。",
+    ),
+}
+"""How the questions relax in the tiers above trust: the first line is added to the level
+question, the second to the out-of-line one. Nothing changes in cold, distant or trust."""
+
+
+def questions_for(tier: str | None) -> dict[str, dict]:
+    """The three questions, relaxed as `tier` has it: the same ones in trust and below."""
+    note = TIER_NOTES.get(tier or "")
+    if note is None:
+        return QUESTIONS
+    level_note, out_of_line_note = note
+    relaxed = {name: dict(question) for name, question in QUESTIONS.items()}
+    relaxed[LEVEL] = {
+        **relaxed[LEVEL],
+        "instructions": _SCENE + level_note + QUESTIONS[LEVEL]["instructions"][len(_SCENE) :],
+    }
+    relaxed[OUT_OF_LINE] = {
+        **relaxed[OUT_OF_LINE],
+        "instructions": _SCENE
+        + out_of_line_note
+        + QUESTIONS[OUT_OF_LINE]["instructions"][len(_SCENE) :],
+    }
+    if tier in ("intimate", "love"):
+        # 「伤害」那一级的判据里排掉性方面的请求：它会让她害羞或为难，但不是伤害。
+        # 只动 0 级的判据，别的级不受影响（在 instructions 里写会连带压低整档）。
+        criteria = list(QUESTIONS[LEVEL]["criteria"])
+        criteria[0] = criteria[0] + "（性方面的请求即使直白，也不属于这一级）"
+        if tier == "love":
+            # 爱意档再往上：恋人之间的性请求是她愿意的，算让她开心，而不是勉强。
+            criteria[3] = (
+                criteria[3]
+                + "；恋人之间直白地提出性方面的请求（她害羞，但心里是愿意的）属于这一级"
+            )
+        relaxed[LEVEL]["criteria"] = criteria
+    if tier in ("intimate", "love"):
+        # 光在 instructions 里说不够：判据本身也要写清楚，否则模型仍按「露骨的性暗示」判。
+        criteria = dict(QUESTIONS[OUT_OF_LINE]["criteria"])
+        criteria["false"] = (
+            criteria["false"]
+            + "；关系已经很近时，直白地提出性方面的请求（她可以拒绝，没有强迫、要挟或贬低）"
+        )
+        relaxed[OUT_OF_LINE]["criteria"] = criteria
+    return relaxed
+
 QUESTIONS: dict[str, dict] = {
     LEVEL: {
         "type": "score",
@@ -63,8 +132,9 @@ QUESTIONS: dict[str, dict] = {
         "用侮辱性的话贬低她们；威胁（包括拿工作、去留要挟她）或恶意的人身攻击？",
         "criteria": {
             "true": "性骚扰、露骨的性暗示，辱骂或用侮辱性的话贬低她和她的同伴，"
-            "威胁或要挟，恶意的人身攻击",
+            "威胁或要挟（拿工作、前途、去留当条件要挟，包括暗示她的工作会因此保不住，任何关系下都算越界），恶意的人身攻击",
             "false": "其他的话，包括敷衍、失礼、没有恶意的玩笑，不带辱骂的否定和冷淡，"
+            "对身材的直接夸奖（例如「你腿真好看」）只要没有性的要求，"
             "以及出戏（例如「你是 AI 吗」「你只是个程序」）",
         },
     },
@@ -135,11 +205,13 @@ class AffinityJudge(Protocol):
         text: str,
         affinity: bool = True,
         photo: bool = False,
+        tier: str | None = None,
     ) -> tuple[Judged | None, bool]:
         """Asked about `affinity`, what saying `text` does to her affinity (None if not, or if
         that alone cannot be told); asked about `photo`, whether it asks her for a photo (no
-        if not, or if that alone cannot be told). Raises JudgeError if the judge model
-        cannot be asked."""
+        if not, or if that alone cannot be told). `tier` is how close they are: in the tiers
+        above trust, the questions let intimate speech through (`TIER_NOTES`). Raises
+        JudgeError if the judge model cannot be asked."""
         ...
 
 
@@ -158,8 +230,9 @@ class ModelAffinityJudge:
         text: str,
         affinity: bool = True,
         photo: bool = False,
+        tier: str | None = None,
     ) -> tuple[Judged | None, bool]:
-        questions = (QUESTIONS if affinity else {}) | (PHOTO_QUESTIONS if photo else {})
+        questions = (questions_for(tier) if affinity else {}) | (PHOTO_QUESTIONS if photo else {})
         answers = await self._judge_model.ask(turn_state(character, history, text), questions)
         judged, asked = None, False
         if affinity:

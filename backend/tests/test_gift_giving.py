@@ -94,14 +94,17 @@ async def backpack(client: httpx.AsyncClient) -> dict[str, int]:
 
 
 def happier(tier: str) -> dict:
-    return {"up": True, "tier_changed": False, "tier": tier, "cooldown": False, "thawed": False}
+    return {"up": True, "tier_changed": False, "tier": tier, "cooldown": False, "thawed": False,
+            "level": None, "step": None, "out_of_line": False}
 
 
 def closer(tier: str) -> dict:
-    return {"up": True, "tier_changed": True, "tier": tier, "cooldown": False, "thawed": False}
+    return {"up": True, "tier_changed": True, "tier": tier, "cooldown": False, "thawed": False,
+            "level": None, "step": None, "out_of_line": False}
 
 
-THAWED = {"up": True, "tier_changed": False, "tier": "cold", "cooldown": False, "thawed": True}
+THAWED = {"up": True, "tier_changed": False, "tier": "cold", "cooldown": False, "thawed": True,
+          "level": None, "step": None, "out_of_line": False}
 
 
 @pytest.mark.parametrize(
@@ -156,11 +159,11 @@ async def test_at_the_top_it_is_given_all_the_same_changing_nothing(
     clock = FakeClock()
     client = holding(make_client, clock, PLUSH)
     await draw_them(client, clock, 1)
-    keep(settings.database_path, "producer", 100, clock.now)
+    keep(settings.database_path, "producer", 120, clock.now)
 
     result = await given(client, "plush")
 
-    assert (result["change"], result["affinity"]["tier"], result["left"]) == (None, "intimate", 0)
+    assert (result["change"], result["affinity"]["tier"], result["left"]) == (None, "love", 0)
 
 
 async def test_what_cannot_be_given_is_refused_changing_nothing(

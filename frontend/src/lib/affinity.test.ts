@@ -6,9 +6,9 @@ import { badgeOf, cueText, heartOf, TIERS, untilText } from "./affinity";
 const zone = "Asia/Tokyo";
 const now = new Date("2026-10-13T20:00:00+09:00");
 
-describe("heartOf：五档各一种心形", () => {
-  it("冷淡 HeartOff、疏远 HeartCrack、信任空心、亲近半心、亲密实心", () => {
-    expect(TIERS.map(heartOf)).toEqual(["off", "crack", "outline", "half", "filled"]);
+describe("heartOf：六档各一种心形", () => {
+  it("冷淡 HeartOff、疏远 HeartCrack、信任空心、亲近半心、亲密实心、爱意双心", () => {
+    expect(TIERS.map(heartOf)).toEqual(["off", "crack", "outline", "half", "filled", "double"]);
   });
 });
 

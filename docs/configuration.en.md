@@ -333,7 +333,7 @@ She remembers what you tell her about yourself, and all of a user's characters s
 
 ## Affinity and gifts
 
-Each character has her own affinity toward each user, carried across all of that character's conversations and calls. It has five tiers: 冷淡 (cold), 疏远 (distant), 信任 (trusting), 亲近 (close) and 亲密 (intimate), starting at trusting; users see the tier in the conversation page's header, never the number. The deployer's judge raises or lowers it from what the user says each turn. The model playing the character can't change it, so a user's own LLM makes no difference.
+Each character has her own affinity toward each user, carried across all of that character's conversations and calls. It has six tiers: 冷淡 (cold), 疏远 (distant), 信任 (trusting), 亲近 (close), 亲密 (intimate) and 爱意 (love, from 100 of at most 120), starting at trusting; users see the tier in the conversation page's header, never the number. The deployer's judge raises or lowers it from what the user says each turn. The model playing the character can't change it, so a user's own LLM makes no difference.
 
 Gifts share affinity's switch. Each day at midnight Beijing time (wherever the user is) the user gets one draw, saving up to 7; the gifts they draw go into their backpack, and they give them to her on the gifts page (the conversation page's gift entries lead there with her already chosen). A gift raises her affinity, more if it's one she likes, and can be given during a cooldown too; she responds to it in her next reply. Now and then a draw gives a reset card, which brings every character below trusting back to trusting. The gift catalog is [`characters/gifts.toml`](../characters/gifts.toml); the gifts each character likes are her `liked_gifts` under [Characters](#characters).
 
