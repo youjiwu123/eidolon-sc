@@ -344,6 +344,16 @@ class Judged:
         return _FEELINGS[self.level]
 
 
+def tier_prompt(tier: Tier) -> str:
+    """这个档位的人设段落（群聊里只读地用一次，不判定、不改分）。"""
+    return _TIER_PROMPTS.get(tier, "")
+
+
+def tier_rank(tier: Tier) -> int:
+    """档位的高低：数值越大越亲近，用来比较两个人谁更近。"""
+    return [name for name, _ in TIERS].index(tier) if tier in [n for n, _ in TIERS] else -1
+
+
 def affinity_prompt(
     tier: Tier,
     judged: Judged | None,

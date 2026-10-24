@@ -38,14 +38,14 @@ export function stopSpeech() {
 }
 
 /** 播放这条回复的语音；正在放的就是它的，则停下。 */
-export function toggleSpeech(messageId: number) {
+export function toggleSpeech(messageId: number, url?: string) {
   if (state?.messageId === messageId) {
     stopSpeech();
     return;
   }
   stopSpeech();
   publish({ messageId, phase: "loading" });
-  const element = new Audio(`/api/messages/${messageId}/speech`);
+  const element = new Audio(url ?? `/api/messages/${messageId}/speech`);
   audio = element;
   element.addEventListener("playing", () => publish({ messageId, phase: "playing" }));
   element.addEventListener("ended", stopSpeech);

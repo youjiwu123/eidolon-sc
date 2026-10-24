@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { AboutSettings } from "@/components/AboutSettings";
 import { AdminEntry } from "@/components/AdminEntry";
 import { AppearanceSettings } from "@/components/AppearanceSettings";
+import { DisplaySettings } from "@/components/settings/DisplaySettings";
 import { CallSettings } from "@/components/CallSettings";
 import { DataPackageSettings } from "@/components/DataPackageSettings";
 import { DeleteAccount } from "@/components/DeleteAccount";
@@ -21,7 +22,12 @@ const PANELS: Record<Exclude<SettingsCategory, "memories" | "stats">, ReactNode>
   profile: <ProducerProfileSettings />,
   call: <CallSettings />,
   "reach-outs": <ReachOutsSettings />,
-  appearance: <AppearanceSettings />,
+  appearance: (
+    <div className="space-y-8">
+      <DisplaySettings />
+      <AppearanceSettings />
+    </div>
+  ),
   "own-keys": <OwnKeysSettings />,
   "sign-in": (
     <>

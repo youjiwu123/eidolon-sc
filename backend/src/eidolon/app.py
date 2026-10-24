@@ -1,6 +1,7 @@
 """The backend's HTTP API."""
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 import hashlib
 import base64
 import binascii
@@ -367,10 +368,39 @@ def create_app(backend: Backend) -> FastAPI:
             return entry.shown() | gift_of(entry)
         return entry.shown()
 
+    async def auto_chat_loop() -> None:
+        """每 20 秒看一眼：哪些群开着自动聊天，就让她们聊一轮。"""
+        while True:
+            try:
+                await asyncio.sleep(20)
+                now = datetime.now(UTC).isoformat()
+                group_chat.stop_expired_auto_chat(store, now)
+                for group in group_chat.auto_chat_groups(store, now):
+                    members = [characters[c] for c in group.participants if c in characters]
+                    if len(members) < 2:
+                        continue
+                    recent = group_chat.messages_of(store, group.id, limit=1)
+                    if recent:
+                        last = datetime.fromisoformat(recent[-1].created_at)
+                        if (datetime.now(UTC) - last).total_seconds() < 30:
+                            continue  # 刚有人说过话，这一轮跳过
+                    admission = admissions.turn(group.user_id, members[0].id, BroughtKeys())
+                    async for _ in group_chat.run_chatter(
+                        store, group, characters, admission.llms.chat, admission.llms.background
+                    ):
+                        pass
+            except Exception:
+                log.exception("auto chat loop")
+
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await backend.start()
-        yield
+        # 自动聊天由页面自己驱动（关掉网页就停），服务器这边不主动开口：
+        # 后台循环留着没启用，免得它替不在此处的用户说话。
+        try:
+            yield
+        finally:
+            pass
         await backend.aclose()
 
     app = FastAPI(title="Eidolon-SC", lifespan=lifespan)
@@ -784,6 +814,7 @@ def create_app(backend: Backend) -> FastAPI:
             "title": group.title,
             "participants": list(group.participants),
             "created_at": group.created_at,
+            "auto_chat": group.auto_chat,
             "last_message": message_json(last) if last else None,
         }
 
@@ -797,6 +828,15 @@ def create_app(backend: Backend) -> FastAPI:
             "segments": [{"ja": s.ja, "zh": s.zh} for s in message.segments],
             "created_at": message.created_at,
         }
+
+    def group_tiers(user_id: str, ids: list[str]) -> dict[str, str]:
+        """群里每个人现在的好感档位：只读，用来让她们说话有分寸，不改分数。"""
+        tiers: dict[str, str] = {}
+        for cid in ids:
+            status = backend.affinities.status(user_id, cid)
+            if status is not None:
+                tiers[cid] = status.tier
+        return tiers
 
     @app.post("/api/groups")
     def make_group(body: GroupInput, user_id: UserId) -> dict:
@@ -839,6 +879,54 @@ def create_app(backend: Backend) -> FastAPI:
         group_chat.rename_group(store, group.id, title)
         return group_json(group_chat.get_group(store, group.id) or group, None)
 
+    @app.get("/api/groups/{group_id}/messages/{message_id}/speech")
+    async def group_message_speech(group_id: str, message_id: int, user_id: UserId) -> Response:
+        """群里她这句话念出来：第一次合成后缓存，之后直接给。"""
+        group = group_or_404(group_id, user_id)
+        message = group_chat.message_by_id(store, group.id, message_id)
+        if message is None or message.role != "character" or not message.speaker_id:
+            raise HTTPException(404, "没有这条消息")
+        kept = group_chat.speech_of(store, message_id)
+        if kept is not None:
+            data, mime = kept
+            return Response(
+                data, media_type=mime, headers={"Cache-Control": "private, max-age=31536000"}
+            )
+        voice = backend.config.voice
+        if voice is None:
+            raise HTTPException(503, "还没有配置语音合成")
+        character = characters.get(message.speaker_id)
+        voice_id = (character.voice_id if character else "").strip()
+        if not voice_id:
+            raise HTTPException(503, "她还没有声音")
+        ja = " ".join(s.ja for s in message.segments if s.ja).strip()
+        said = spoken_by(voiced(ja), voice.model)
+        if not said.strip():
+            raise HTTPException(503, "这句话没有可以念出来的文字")
+        try:
+            data = await voice_line(voice, said, voice_id)
+        except Exception as e:
+            raise HTTPException(502, f"语音合成失败了：{e}") from e
+        group_chat.keep_speech(store, message_id, "audio/mpeg", data)
+        return Response(
+            data, media_type="audio/mpeg", headers={"Cache-Control": "private, max-age=31536000"}
+        )
+
+    @app.post("/api/groups/{group_id}/auto")
+    def set_auto_chat(group_id: str, body: dict, user_id: UserId) -> dict:
+        """开/关「让她们自己聊」。开关存在服务器上：关掉网页、锁屏，她们照样继续，
+        到点（默认 20 分钟）自己停。"""
+        group = group_or_404(group_id, user_id)
+        enabled = bool(body.get("enabled"))
+        if not enabled:
+            group_chat.set_auto_chat(store, group.id, None)
+            return {"auto_chat": False, "until": None}
+        minutes = int(body.get("minutes") or 20)
+        minutes = max(1, min(minutes, 120))
+        until = (datetime.now(UTC) + timedelta(minutes=minutes)).isoformat()
+        group_chat.set_auto_chat(store, group.id, until)
+        return {"auto_chat": True, "until": until}
+
     @app.post("/api/groups/{group_id}/chatter")
     async def group_chatter(group_id: str, user_id: UserId) -> StreamingResponse:
         """没人说话时，让她们自己聊两三句。"""
@@ -853,7 +941,50 @@ def create_app(backend: Backend) -> FastAPI:
                 return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
             async for kind, speaker_id, message in group_chat.run_chatter(
-                store, group, characters, admission.llms.chat, admission.llms.background
+                store, group, characters, admission.llms.chat, admission.llms.background,
+                tiers=group_tiers(user_id, list(group.participants)),
+            ):
+                if kind == "thinking":
+                    yield send({"type": "thinking", "speaker_id": speaker_id})
+                elif message is not None:
+                    yield send({"type": "message", "message": message_json(message)})
+            yield send({"type": "done"})
+
+        return StreamingResponse(events(), media_type="text/event-stream")
+
+    @app.post("/api/groups/{group_id}/members")
+    def invite_member(group_id: str, body: dict, user_id: UserId) -> dict:
+        """把一个人拉进群。"""
+        group = group_or_404(group_id, user_id)
+        character_id = (body.get("character_id") or "").strip()
+        if character_id not in characters:
+            raise HTTPException(422, "没有这个角色")
+        if character_id in group.participants:
+            raise HTTPException(422, "她已经在这个群里了")
+        if len(group.participants) >= group_chat.MAX_PARTICIPANTS:
+            raise HTTPException(422, f"一个群最多 {group_chat.MAX_PARTICIPANTS} 个人")
+        updated = group_chat.add_member(store, group.id, character_id)
+        notice = group_chat.join_notice(store, group.id, characters[character_id])
+        return {**group_json(updated, None), "notice": message_json(notice)}
+
+    @app.post("/api/groups/{group_id}/welcome")
+    async def group_welcome(group_id: str, body: dict, user_id: UserId) -> StreamingResponse:
+        """刚进群的人打个招呼，另一个人接一句。"""
+        group = group_or_404(group_id, user_id)
+        character_id = (body.get("character_id") or "").strip()
+        if character_id not in characters or character_id not in group.participants:
+            raise HTTPException(422, "她不在这个群里")
+        members = [characters[c] for c in group.participants if c in characters]
+        admission = admissions.turn(user_id, members[0].id, BroughtKeys())
+
+        async def events() -> AsyncIterator[str]:
+            def send(payload: dict) -> str:
+                return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+            async for kind, speaker_id, message in group_chat.run_welcome(
+                store, group, characters, characters[character_id],
+                admission.llms.chat, admission.llms.background,
+                tiers=group_tiers(user_id, list(group.participants)),
             ):
                 if kind == "thinking":
                     yield send({"type": "thinking", "speaker_id": speaker_id})
@@ -900,6 +1031,7 @@ def create_app(backend: Backend) -> FastAPI:
                 admission.llms.chat,
                 admission.llms.background,
                 forced=(body.target_id,) if body.target_id else (),
+                tiers=group_tiers(user_id, list(group.participants)),
             ):
                 if kind == "thinking":
                     yield send({"type": "thinking", "speaker_id": speaker_id})

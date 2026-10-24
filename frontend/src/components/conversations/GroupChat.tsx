@@ -4,13 +4,34 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { MarkedAvatar } from "@/components/app/MarkedAvatar";
+import { SpeakIcon } from "@/theme/icons";
+import { speechState, subscribeSpeech, toggleSpeech } from "@/lib/messageSpeech";
+import { useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import type { Character } from "@/lib/api";
-import { getGroup, renameGroup, sendGroupTurn, startChatter, type Group, type GroupMessage } from "@/lib/groups";
+import {
+  getGroup,
+  inviteMember,
+  renameGroup,
+  startChatter,
+  sendGroupTurn,
+  groupSpeechUrl,
+  startWelcome,
+  type Group,
+  type GroupMessage,
+} from "@/lib/groups";
 import { copy } from "@/i18n";
 
 function nameOf(characters: Character[] | null, id: string): string {
@@ -30,8 +51,12 @@ export function GroupChat({ groupId, characters }: { groupId: string; characters
   const [sending, setSending] = useState(false);
   const [typing, setTyping] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
-  const [autoChat, setAutoChat] = useState(false);
-  const auto = useRef(false);
+  const [autoChat, setAutoChatState] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const speech = useSyncExternalStore(subscribeSpeech, speechState, speechState);
+  const busy = useRef(false);
+  const sendingRef = useRef(false);
+  const abort = useRef<AbortController | null>(null);
   const [nameDraft, setNameDraft] = useState("");
   const [failure, setFailure] = useState<string | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
@@ -48,36 +73,63 @@ export function GroupChat({ groupId, characters }: { groupId: string; characters
 
   useEffect(() => {
     void load();
-    setAutoChat(window.localStorage.getItem(`group-auto-${groupId}`) === "1");
+    setAutoChatState(window.localStorage.getItem(`group-auto-${groupId}`) === "1");
   }, [load, groupId]);
 
-  // 自动聊天：开着就隔一会儿让她们自己聊一轮，直到关掉或有人在打字。
+  // 自动聊天跟着这个页面走：开着就每 20 秒让她们聊一轮，关掉网页、锁屏就停。
+  // 依赖里只放开关和群——把 typing 放进来会让计时器不停重建，收到的消息被丢掉。
   useEffect(() => {
-    auto.current = autoChat;
     if (!autoChat) return;
-    let cancelled = false;
+    let stopped = false;
     const run = async () => {
-      if (sending || typing) return;
+      if (stopped || busy.current || sendingRef.current) return;
+      busy.current = true;
       try {
         await startChatter(groupId, (event) => {
-          if (cancelled) return;
           if (event.type === "thinking") setTyping(event.speaker_id);
           else if (event.type === "message") {
             setTyping(null);
             setMessages((current) => [...current, event.message]);
           } else if (event.type === "done") setTyping(null);
         });
+      } catch (error) {
+        if (String(error).includes("429")) {
+          setAutoChatState(false);
+          setFailure(copy.groups.quotaOut);
+        }
+      } finally {
+        busy.current = false;
+      }
+    };
+    const timer = setInterval(() => void run(), 20000);
+    // 开满 20 分钟自己关掉，免得忘了它还开着。
+    const stop = setTimeout(() => {
+      setAutoChatState(false);
+      setFailure(copy.groups.autoStopped);
+    }, 20 * 60 * 1000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      clearTimeout(stop);
+      setTyping(null);
+    };
+  }, [autoChat, groupId]);
+
+  // 每 15 秒对一次账：别的窗口、别的设备、或者漏掉的事件，都靠它补上。
+  useEffect(() => {
+    const pull = async () => {
+      if (busy.current || sendingRef.current) return;
+      try {
+        const data = await getGroup(groupId);
+        setGroup(data.group);
+        setMessages((current) => (data.messages.length > current.length ? data.messages : current));
       } catch {
         /* 下一轮再试 */
       }
     };
-    const timer = setInterval(() => void run(), 20000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-      setTyping(null);
-    };
-  }, [autoChat, groupId, sending, typing]);
+    const timer = setInterval(() => void pull(), 15000);
+    return () => clearInterval(timer);
+  }, [groupId]);
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: "end" });
@@ -105,6 +157,7 @@ export function GroupChat({ groupId, characters }: { groupId: string; characters
     const text = parsed.text.trim();
     if (!text || sending) return;
     setSending(true);
+    sendingRef.current = true;
     setFailure(null);
     setTyping(null);
     const optimistic: GroupMessage = {
@@ -116,6 +169,7 @@ export function GroupChat({ groupId, characters }: { groupId: string; characters
     };
     setMessages((current) => [...current, optimistic]);
     setDraft("");
+    abort.current = new AbortController();
     try {
       await sendGroupTurn(groupId, text, (event) => {
         if (event.type === "thinking") setTyping(event.speaker_id);
@@ -123,14 +177,26 @@ export function GroupChat({ groupId, characters }: { groupId: string; characters
           setTyping(null);
           setMessages((current) => [...current, event.message]);
         } else if (event.type === "done") setTyping(null);
-      }, parsed.targetId);
+      }, parsed.targetId, abort.current.signal);
     } catch (error) {
       setFailure(error instanceof Error ? error.message : String(error));
     } finally {
       setTyping(null);
       setSending(false);
+      sendingRef.current = false;
     }
   };
+
+  // 兜底：真卡住了也不要一直禁用发送键。
+  useEffect(() => {
+    if (!sending) return;
+    const guard = setTimeout(() => {
+      setSending(false);
+      sendingRef.current = false;
+      setTyping(null);
+    }, 90000);
+    return () => clearTimeout(guard);
+  }, [sending]);
 
   const members = group?.participants ?? [];
 
@@ -182,11 +248,59 @@ export function GroupChat({ groupId, characters }: { groupId: string; characters
             {group?.title ?? members.map((id) => nameOf(characters, id)).join("、")}
           </button>
         )}
+        <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+          <DialogTrigger render={<Button size="sm" variant="ghost" />}>{copy.groups.invite}</DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{copy.groups.invite}</DialogTitle>
+              <DialogDescription>{copy.groups.inviteHint}</DialogDescription>
+            </DialogHeader>
+            <div className="max-h-80 space-y-1 overflow-y-auto">
+              {(characters ?? [])
+                .filter((c) => !members.includes(c.id))
+                .map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className="flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left hover:bg-muted"
+                    onClick={async () => {
+                      try {
+                        const updated = await inviteMember(groupId, c.id);
+                        setGroup((current) =>
+                          current ? { ...current, participants: updated.participants } : current,
+                        );
+                        setInviteOpen(false);
+                        if (updated.notice) {
+                          setMessages((current) => [...current, updated.notice as GroupMessage]);
+                        }
+                        setSending(true);
+                        await startWelcome(groupId, c.id, (event) => {
+                          if (event.type === "thinking") setTyping(event.speaker_id);
+                          else if (event.type === "message") {
+                            setTyping(null);
+                            setMessages((current) => [...current, event.message]);
+                          } else if (event.type === "done") setTyping(null);
+                        });
+                      } catch (error) {
+                        setFailure(error instanceof Error ? error.message : String(error));
+                      } finally {
+                        setTyping(null);
+                        setSending(false);
+                      }
+                    }}
+                  >
+                    <MarkedAvatar name={c.name} src={c.avatar_url} size="sm" />
+                    <span className="text-base">{c.name_zh ?? c.name}</span>
+                  </button>
+                ))}
+            </div>
+          </DialogContent>
+        </Dialog>
         <label className="flex shrink-0 items-center gap-2 text-meta text-muted-foreground">
           <Switch
             checked={autoChat}
             onCheckedChange={(next) => {
-              setAutoChat(next);
+              setAutoChatState(next);
               window.localStorage.setItem(`group-auto-${groupId}`, next ? "1" : "0");
             }}
           />
@@ -196,7 +310,11 @@ export function GroupChat({ groupId, characters }: { groupId: string; characters
 
       <div className="flex-1 space-y-3 overflow-y-auto px-3 py-4">
         {messages.map((message) =>
-          message.role === "user" ? (
+          message.role === "system" ? (
+            <p key={message.id} className="py-1 text-center text-meta text-muted-foreground">
+              {message.segments[0]?.zh || message.segments[0]?.ja}
+            </p>
+          ) : message.role === "user" ? (
             <div key={message.id} className="flex justify-end">
               <div className="max-w-[80%] rounded-2xl bg-primary px-3 py-2 text-primary-foreground">
                 {(message.segments[0]?.zh || message.segments[0]?.ja) ?? ""}
@@ -221,6 +339,19 @@ export function GroupChat({ groupId, characters }: { groupId: string; characters
                     </div>
                   ))}
                 </div>
+                <button
+                  type="button"
+                  aria-label={copy.groups.speak}
+                  className="flex items-center gap-1 text-meta text-muted-foreground hover:text-foreground"
+                  onClick={() => toggleSpeech(message.id, groupSpeechUrl(groupId, message.id))}
+                >
+                  <SpeakIcon aria-hidden className="size-3.5" />
+                  {speech?.messageId === message.id
+                    ? speech.phase === "loading"
+                      ? copy.groups.speakingLoading
+                      : copy.groups.speaking
+                    : copy.groups.speak}
+                </button>
               </div>
             </div>
           ),
@@ -249,8 +380,22 @@ export function GroupChat({ groupId, characters }: { groupId: string; characters
           className="min-h-10 flex-1 resize-none"
           rows={1}
         />
-        <Button disabled={!draft.trim() || sending} onClick={() => void send()}>
-          {copy.groups.send}
+        <Button
+          variant={sending ? "destructive" : "outline"}
+          disabled={!sending && !draft.trim()}
+          className="disabled:bg-background disabled:text-muted-foreground disabled:opacity-60"
+          onClick={() => {
+            if (sending) {
+              abort.current?.abort();
+              setSending(false);
+              sendingRef.current = false;
+              setTyping(null);
+              return;
+            }
+            void send();
+          }}
+        >
+          {sending ? copy.groups.stop : copy.groups.send}
         </Button>
       </div>
     </div>

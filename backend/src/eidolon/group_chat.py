@@ -40,18 +40,43 @@ CREATE TABLE IF NOT EXISTS group_conversations (
     user_id TEXT NOT NULL REFERENCES users(id),
     created_at TEXT NOT NULL,
     title TEXT,
-    participants TEXT NOT NULL
+    participants TEXT NOT NULL,
+    auto_chat INTEGER NOT NULL DEFAULT 0,
+    auto_chat_until TEXT
 );
 CREATE TABLE IF NOT EXISTS group_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     group_id TEXT NOT NULL REFERENCES group_conversations(id),
-    role TEXT NOT NULL CHECK (role IN ('user', 'character')),
+    role TEXT NOT NULL CHECK (role IN ('user', 'character', 'system')),
     speaker_id TEXT,
     segments TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS group_messages_by_group ON group_messages(group_id, id);
 CREATE INDEX IF NOT EXISTS groups_by_user ON group_conversations(user_id);
+CREATE TABLE IF NOT EXISTS group_message_speech (
+    message_id INTEGER PRIMARY KEY REFERENCES group_messages(id),
+    mime TEXT NOT NULL,
+    audio BLOB NOT NULL
+);
+"""
+
+_MIGRATE_SYSTEM = """
+PRAGMA foreign_keys = OFF;
+BEGIN;
+CREATE TABLE group_messages_new (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id TEXT NOT NULL REFERENCES group_conversations(id),
+    role TEXT NOT NULL CHECK (role IN ('user', 'character', 'system')),
+    speaker_id TEXT,
+    segments TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+INSERT INTO group_messages_new SELECT id, group_id, role, speaker_id, segments, created_at FROM group_messages;
+DROP TABLE group_messages;
+ALTER TABLE group_messages_new RENAME TO group_messages;
+CREATE INDEX IF NOT EXISTS group_messages_by_group ON group_messages(group_id, id);
+COMMIT;
 """
 
 GROUP_RULES = """\
@@ -62,6 +87,9 @@ GROUP_RULES = """\
 - 一轮通常一两句；别人说完，你可以只回一句反应。
 - 不要每句都点别人的名字，也不要每次都要总结。
 - 称呼按你人设里的叫法来；不确定该怎么称呼的人，就用「名字＋さん」。
+
+关系不是均匀的：你和制作人之间有多亲近，按你读到的关系来写；别人和制作人更亲近时，
+你会有自己的反应（在意、打趣、装作没看见都行），但不要说出「好感」「档位」这种词。
 """
 
 
@@ -78,6 +106,7 @@ class Group:
     created_at: str
     title: str | None
     participants: tuple[str, ...]
+    auto_chat: bool = False
 
 
 @dataclass(frozen=True)
@@ -94,8 +123,20 @@ class GroupMessage:
 
 
 def ensure_schema(db) -> None:
-    """建群聊的表；启动时调一次即可。"""
+    """建群聊的表；启动时调一次即可。老的 `group_messages` 只认 user/character，
+    这里换成也认 system 的那张（成员加入的提示要用）。"""
+    row = db.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'group_messages'"
+    ).fetchone()
+    if row and "'system'" not in (row[0] or ""):
+        db.executescript(_MIGRATE_SYSTEM)
     db.executescript(_SCHEMA)
+    columns = {r[1] for r in db.execute("pragma table_info(group_conversations)")}
+    if "auto_chat" not in columns:
+        db.execute("ALTER TABLE group_conversations ADD COLUMN auto_chat INTEGER NOT NULL DEFAULT 0")
+    if "auto_chat_until" not in columns:
+        db.execute("ALTER TABLE group_conversations ADD COLUMN auto_chat_until TEXT")
+    db.commit()
 
 
 def _row_to_group(row: Mapping) -> Group:
@@ -105,6 +146,7 @@ def _row_to_group(row: Mapping) -> Group:
         row["created_at"],
         row["title"],
         tuple(json.loads(row["participants"])),
+        bool(row.get("auto_chat")) if hasattr(row, "get") else False,
     )
 
 
@@ -152,6 +194,83 @@ def rename_group(store: Store, group_id: str, title: str | None) -> None:
         store._db.execute(
             "UPDATE group_conversations SET title = ? WHERE id = ?", (title, group_id)
         )
+
+
+def speech_of(store: Store, message_id: int) -> tuple[bytes, str] | None:
+    with store._lock:
+        row = store._db.execute(
+            "SELECT mime, audio FROM group_message_speech WHERE message_id = ?", (message_id,)
+        ).fetchone()
+    return (row["audio"], row["mime"]) if row else None
+
+
+def keep_speech(store: Store, message_id: int, mime: str, audio: bytes) -> None:
+    with store._lock, store._db:
+        store._db.execute(
+            "INSERT OR REPLACE INTO group_message_speech (message_id, mime, audio) VALUES (?, ?, ?)",
+            (message_id, mime, audio),
+        )
+
+
+def message_by_id(store: Store, group_id: str, message_id: int) -> GroupMessage | None:
+    with store._lock:
+        row = store._db.execute(
+            "SELECT * FROM group_messages WHERE id = ? AND group_id = ?", (message_id, group_id)
+        ).fetchone()
+    return _row_to_message(row) if row else None
+
+
+def join_notice(store: Store, group_id: str, character: Character) -> GroupMessage:
+    """「某某 加入了群聊」这条系统消息，`speaker_id` 是加进来的人。"""
+    segments = (Segment("", f"{character.name_zh or character.name} 加入了群聊"),)
+    return append_message(store, group_id, "system", segments, character.id)
+
+
+def set_auto_chat(store: Store, group_id: str, until: str | None) -> None:
+    """`until` 为空就是关掉；否则开着，到这个时间自动停（服务器说了算，关页面也照旧）。"""
+    with store._lock, store._db:
+        store._db.execute(
+            "UPDATE group_conversations SET auto_chat = ?, auto_chat_until = ? WHERE id = ?",
+            (1 if until else 0, until, group_id),
+        )
+
+
+def auto_chat_groups(store: Store, now: str) -> list[Group]:
+    """现在该让她们自己聊的群：开着，且还没到时间。"""
+    with store._lock:
+        rows = store._db.execute(
+            "SELECT * FROM group_conversations WHERE auto_chat = 1 AND auto_chat_until > ?"
+            " ORDER BY created_at",
+            (now,),
+        ).fetchall()
+    return [_row_to_group(r) for r in rows]
+
+
+def stop_expired_auto_chat(store: Store, now: str) -> None:
+    """到点的自动关掉。"""
+    with store._lock, store._db:
+        store._db.execute(
+            "UPDATE group_conversations SET auto_chat = 0, auto_chat_until = NULL"
+            " WHERE auto_chat = 1 AND (auto_chat_until IS NULL OR auto_chat_until <= ?)",
+            (now,),
+        )
+
+
+def add_member(store: Store, group_id: str, character_id: str) -> Group:
+    """把一个人拉进群；返回新的群。"""
+    group = get_group(store, group_id)
+    if group is None:
+        raise KeyError(group_id)
+    people = list(group.participants)
+    if character_id in people:
+        return group
+    people.append(character_id)
+    with store._lock, store._db:
+        store._db.execute(
+            "UPDATE group_conversations SET participants = ? WHERE id = ?",
+            (json.dumps(people, ensure_ascii=False), group_id),
+        )
+    return Group(group.id, group.user_id, group.created_at, group.title, tuple(people))
 
 
 def delete_group(store: Store, group_id: str) -> None:
@@ -237,11 +356,49 @@ def _plain(segments: Sequence[Segment]) -> str:
     return " ".join(s.ja or s.zh for s in segments if (s.ja or s.zh))
 
 
+RELATIONSHIP_RULE = (
+    "群里还有一层关系：制作人和每个人之间的亲近程度不一样。你只知道自己和制作人"
+    "现在是什么关系；如果看出制作人和别人比和你更亲近，你会有反应——在意、好奇、"
+    "起哄、别扭都行。但不要说出「好感度」「档位」「数值」这类词，也不要给别人排名。"
+)
+
+
+def _relationship_lines(
+    speaker: Character, members: Sequence[Character], tiers: Mapping[str, str] | None
+) -> list[str]:
+    """她这一轮要读到的人际关系：自己的档位人设，以及别人的亲近程度。"""
+    if not tiers:
+        return []
+    from eidolon.affinity import tier_prompt, tier_rank
+
+    lines: list[str] = []
+    mine = tiers.get(speaker.id)
+    if mine:
+        lines.append(f"# 你和制作人之间的关系\n{tier_prompt(mine)}")
+    closer: list[str] = []
+    for other in members:
+        if other.id == speaker.id:
+            continue
+        theirs = tiers.get(other.id)
+        if not theirs or not mine:
+            continue
+        if tier_rank(theirs) > tier_rank(mine) and tier_rank(theirs) >= 3:  # 亲近及以上
+            closer.append(other.name_zh or other.name)
+    if closer:
+        lines.append(
+            "# 你看得出来的事\n制作人和"
+            + "、".join(closer)
+            + "之间的气氛，比和你更亲近一些。你自己心里有数就好，不一定要说出来。"
+        )
+    return lines
+
+
 def group_prompt(
     speaker: Character,
     members: Sequence[Character],
     history: Sequence[GroupMessage],
     text: str,
+    tiers: Mapping[str, str] | None = None,
 ) -> list["ChatMessage"]:
     """轮到 `speaker` 时给模型的完整提示词。
 
@@ -257,6 +414,7 @@ def group_prompt(
             format_instructions(None),  # 文字回合：日语原文＋中文字幕
             GROUP_RULES,
             f"现在在场的人：制作人、你（{speaker.name_zh or speaker.name}）、{_participants_line(others)}。",
+            *_relationship_lines(speaker, members, tiers),
         ]
     )
     conversation: list[ChatMessage] = [ChatMessage("system", system)]
@@ -280,11 +438,17 @@ async def speak(
     text: str,
     chat: "ChatService",
     opening: bool = False,
+    hint: str = "",
+    tiers: Mapping[str, str] | None = None,
 ) -> list[Segment]:
     """让 `speaker` 回一句，解析成段落；解析不出内容时返回空表。
 
     `opening` 是真的一句用户发言都没有时的开口，她得自己挑起话头。"""
-    prompt = group_prompt(speaker, members, history, text or OPENING)
+    prompt = group_prompt(speaker, members, history, text or OPENING, tiers)
+    if hint:
+        from eidolon.llm import ChatMessage
+
+        prompt.append(ChatMessage("system", hint))
     parser = ReplyParser()
     parts: dict[int, dict[str, str]] = {}
     events = []
@@ -421,6 +585,7 @@ async def run_chatter(
     roster: Mapping[str, Character],
     chat: "ChatService",
     picker: "ChatService | None" = None,
+    tiers: Mapping[str, str] | None = None,
 ) -> AsyncIterator[tuple[str, str, GroupMessage | None]]:
     """没人说话的时候，让她们自己聊两三句。和回合一样，一句一条地交出去。"""
     members = [roster[cid] for cid in group.participants if cid in roster]
@@ -433,7 +598,7 @@ async def run_chatter(
     first = opener[0]
     yield ("thinking", first.id, None)
     try:
-        segments = await speak(first, members, history, "", chat, opening=True)
+        segments = await speak(first, members, history, "", chat, opening=True, tiers=tiers)
     except Exception:
         log.exception("group %s: %s could not open", group.id, first.id)
         return
@@ -449,9 +614,59 @@ async def run_chatter(
     await asyncio.sleep(REACTION_PAUSE)
     yield ("thinking", reactor.id, None)
     try:
-        segments = await speak(reactor, members, history, "", chat)
+        segments = await speak(reactor, members, history, "", chat, tiers=tiers)
     except Exception:
         log.exception("group %s: %s could not react", group.id, reactor.id)
+        return
+    if segments:
+        message = append_message(store, group.id, "character", segments, reactor.id)
+        yield ("message", reactor.id, message)
+
+
+WELCOME_HINT = (
+    "（{name} 刚加入这个群。请大家自然地打个招呼——一两句就好，"
+    "不要列队欢迎，也不要说「欢迎加入」这种客套话太多遍。）"
+)
+
+
+async def run_welcome(
+    store: Store,
+    group: Group,
+    roster: Mapping[str, Character],
+    joiner: Character,
+    chat: "ChatService",
+    picker: "ChatService | None" = None,
+    tiers: Mapping[str, str] | None = None,
+) -> AsyncIterator[tuple[str, str, GroupMessage | None]]:
+    """有人刚进群：她先开口打个招呼，另一个人接一句。"""
+    members = [roster[cid] for cid in group.participants if cid in roster]
+    history = messages_of(store, group.id)
+    name = joiner.name_zh or joiner.name
+
+    yield ("thinking", joiner.id, None)
+    try:
+        segments = await speak(
+            joiner, members, history, "", chat, hint=WELCOME_HINT.format(name=name), tiers=tiers
+        )
+    except Exception:
+        log.exception("group %s: %s could not say hello", group.id, joiner.id)
+        return
+    if segments:
+        message = append_message(store, group.id, "character", segments, joiner.id)
+        history.append(message)
+        yield ("message", joiner.id, message)
+
+    reactor = await choose_reactor(members, history, picker, joiner.id)
+    if reactor is None:
+        return
+    await asyncio.sleep(REACTION_PAUSE)
+    yield ("thinking", reactor.id, None)
+    try:
+        segments = await speak(
+            reactor, members, history, "", chat, hint=WELCOME_HINT.format(name=name), tiers=tiers
+        )
+    except Exception:
+        log.exception("group %s: %s could not greet", group.id, reactor.id)
         return
     if segments:
         message = append_message(store, group.id, "character", segments, reactor.id)
@@ -466,6 +681,7 @@ async def run_turn(
     chat: "ChatService",
     picker: "ChatService | None" = None,
     forced: Sequence[str] = (),
+    tiers: Mapping[str, str] | None = None,
 ) -> AsyncIterator[tuple[str, str, GroupMessage | None]]:
     """用户发言后，一个个角色接话，产出写好的群消息。"""
     members = [roster[cid] for cid in group.participants if cid in roster]
@@ -483,7 +699,8 @@ async def run_turn(
     # 几个人同时想，谁能先说就先出现：一起发出去，再按顺序交给页面，
     # 整轮等的时间是一句的时间，不是几句相加。
     tasks = [
-        asyncio.create_task(speak(speaker, members, history, text, chat)) for speaker in speakers
+        asyncio.create_task(speak(speaker, members, history, text, chat, tiers=tiers))
+        for speaker in speakers
     ]
     last_message: GroupMessage | None = None
     try:
@@ -517,7 +734,7 @@ async def run_turn(
     await asyncio.sleep(REACTION_PAUSE)
     yield ("thinking", reactor.id, None)
     try:
-        segments = await speak(reactor, members, history, text, chat)
+        segments = await speak(reactor, members, history, text, chat, tiers=tiers)
     except Exception:
         log.exception("group %s: %s could not react", group.id, reactor.id)
         return
