@@ -36,7 +36,6 @@ import {
   nextPacedAt,
   pacedCard,
   previousLineOf,
-  typedOf,
   type LineCard,
   type LineCardEvent,
 } from "@/lib/linePacing";
@@ -126,12 +125,6 @@ export type Snapshot = {
   layer: Layer | null;
   /** The list of microphones is open; only while the call is connected. */
   pickingMic: boolean;
-  /** The call layer's dock is swapped for the input bar, to type to her; only while the call is
-   * connected, and each call starts without it. */
-  typing: boolean;
-  /** What the user typed in the call, shown at the line card's foot until her reply to it is
-   * said (`linePacing.ts`); null for nothing. */
-  typed: string | null;
   /** What the user is saying in the call so far. */
   hearing: string;
   /** The line the call screen's line card shows, by the rules in `linePacing.ts`: with her
@@ -200,16 +193,7 @@ export type Snapshot = {
 
 type State = Omit<
   Snapshot,
-  | "entries"
-  | "line"
-  | "previousLine"
-  | "typed"
-  | "stand"
-  | "canDial"
-  | "canStartNew"
-  | "cooling"
-  | "ended"
-  | "callPhoto"
+  "entries" | "line" | "previousLine" | "stand" | "canDial" | "canStartNew" | "cooling" | "ended" | "callPhoto"
 > & {
   log: ConversationLog;
   /** The photo she sent last in the call under way or the last one, by its id. */
@@ -227,7 +211,6 @@ const IDLE: Omit<State, "log" | "card" | "stand" | "dial" | "callPhotoId"> = {
   call: { phase: "idle" },
   layer: null,
   pickingMic: false,
-  typing: false,
   hearing: "",
   micMuted: false,
   micId: "",
@@ -250,7 +233,6 @@ export const NOT_OPEN: Snapshot = {
   entries: [],
   line: null,
   previousLine: null,
-  typed: null,
   stand: CALM,
   canDial: false,
   canStartNew: false,
@@ -299,14 +281,14 @@ export type Ports = {
    * conversation was started. Told even after the page is left. */
   onListChanged: () => void;
   /** A turn recorded, typed or in a call, was rewarded (lib/rewards): told even after the page
-   * is left, for the dot on 「玩法」. */
+   * is left, for the dot on 「礼物」. */
   onRewarded: (rewarded: Rewarded) => void;
   startCall: (
     conversationId: string,
     preferences: CallPreferences,
     handlers: CallHandlers,
   ) => Promise<Call>;
-  sendTurn: (conversationId: string, text: string) => AsyncIterable<TurnEvent>;
+  sendTurn: (conversationId: string, text: string, image?: string | null) => AsyncIterable<TurnEvent>;
   /** How a photo she sent is coming along. */
   getPhoto: (id: string) => Promise<PhotoStatus>;
   /** Her affinity with the user now; null while affinity is off. */
@@ -441,27 +423,29 @@ export class LiveConversation {
   }
 
   /** Send what is in the input box as a text turn. */
-  async submit(): Promise<void> {
+  async submit(image?: string | null): Promise<void> {
     const text = this.state.draft.trim();
     const conversationId = this.openConversationId();
     // One exchange at a time: not over a text turn, nor into a call still dialing; none in a
     // cooldown, nor into a conversation she has ended.
-    if (!text || !conversationId || this.state.busy || this.state.call.phase === "dialing") return;
+    // A picture on its own is an exchange too; nothing typed with it still sends.
+    if ((!text && !image) || !conversationId || this.state.busy || this.state.call.phase === "dialing") return;
     if (isCooling(this.state) || isEnded(this.state)) return;
     this.update({ draft: "", failure: null });
     if (this.call) {
       // The call takes it up like speech; its reply arrives as call events. Typed while she
       // speaks, it interrupts her.
       this.call.sendText(text);
-      this.moveCard({ type: "interrupted", typed: text }, { stand: this.directed({ type: "typed" }) });
+      this.moveCard({ type: "interrupted" }, { stand: this.directed({ type: "typed" }) });
       return;
     }
-    this.apply({ type: "submitted", text, at: this.isoNow() }, { busy: true });
+    // The picture goes on the entry shown at once, so it is there before the backend answers.
+    this.apply({ type: "submitted", text, at: this.isoNow(), image: image ?? undefined }, { busy: true });
 
     let failure: Failure | null = null;
     let done = false;
     try {
-      for await (const event of this.ports.sendTurn(conversationId, text)) {
+      for await (const event of this.ports.sendTurn(conversationId, text, image)) {
         this.applyTurnEvent(event);
         if (event.type === "done") done = true;
         // A turn that failed leaves no record and does not count towards the limit.
@@ -609,9 +593,7 @@ export class LiveConversation {
   /** Collapse the call layer onto the conversation, while the call is under way. */
   collapse(): void {
     const layer = this.state.layer;
-    // The input bar goes with it: folded away it would leave the viewport as the bar sets it.
-    if (isLive(this.state.call) && layer && !layer.collapsed)
-      this.update({ layer: { ...layer, collapsed: true }, typing: false });
+    if (isLive(this.state.call) && layer && !layer.collapsed) this.update({ layer: { ...layer, collapsed: true } });
   }
 
   /** Unfold the call layer, while the call is under way: once it is over it cannot open again.
@@ -636,16 +618,6 @@ export class LiveConversation {
 
   closeMicPicker(): void {
     if (this.state.pickingMic) this.update({ pickingMic: false });
-  }
-
-  /** Swap the call layer's dock for the input bar, to type to her in the call. */
-  openTyping(): void {
-    if (this.state.call.phase === "connected" && !this.state.typing) this.update({ typing: true });
-  }
-
-  /** Back to the dock; what is typed stays in the input box. */
-  closeTyping(): void {
-    if (this.state.typing) this.update({ typing: false });
   }
 
   /** Mic mute: the microphone's track only, in the browser; typing still goes to the call. */
@@ -817,9 +789,13 @@ export class LiveConversation {
     }, CUE_MS);
   }
 
+  /** Re-reads her affinity, as an admin's setting changes it outside a turn. */
+  async refreshAffinity(): Promise<void> {
+    await this.readAffinity();
+  }
+
   /** Reads her affinity as the page opens; if it cannot be read, there is none to show. */
-  private async readAffinity(): Promise<void> {
-    let affinity: AffinityStatus | null = null;
+  private async readAffinity(): Promise<void> {    let affinity: AffinityStatus | null = null;
     try {
       affinity = await this.ports.getAffinity(this.characterId);
     } catch {
@@ -998,15 +974,13 @@ export class LiveConversation {
  * How the call screen follows the call, from one state to the next: the layer draws the call
  * under way, and dialing, and a call ending for a reason, open it up again, so the user sees
  * the call or why it ended. Back at idle it keeps that last call, folded away, until the next
- * call. The microphone list and the input bar are only for a connected call.
+ * call. The microphone list is only for a connected call.
  */
 function withCallScreenRules(before: State, next: State): State {
   const layer = nextLayer(before, next);
-  const connected = next.call.phase === "connected";
-  const pickingMic = next.pickingMic && connected;
-  const typing = next.typing && connected;
-  if (layer === next.layer && pickingMic === next.pickingMic && typing === next.typing) return next;
-  return { ...next, layer, pickingMic, typing };
+  const pickingMic = next.pickingMic && next.call.phase === "connected";
+  if (layer === next.layer && pickingMic === next.pickingMic) return next;
+  return { ...next, layer, pickingMic };
 }
 
 /** The layer for the next state: the call under way, or the last one kept folded away. */
@@ -1058,7 +1032,6 @@ function toSnapshot(state: State): Snapshot {
     entries: log.entries,
     line: lineOf(card),
     previousLine: previousLineOf(card),
-    typed: typedOf(card),
     stand: directionOf(stand),
     canDial: free && !isCooling(state) && !isEnded(state),
     canStartNew: canStartNew(state),

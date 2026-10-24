@@ -14,10 +14,43 @@ services:
     environment:
       BACKEND_URL: http://backend:8000
       EIDOLON_STAND_ASSETS_URL: ${EIDOLON_STAND_ASSETS_URL:-}
+      # 页面用 `/stands/...` 取立绘素材时，前端到哪里拿（compose 里的 stands 服务）。
+      STANDS_UPSTREAM: http://stands
     ports:
-      - "3000:3000"
+      # 宿主机 3000 可能落进 Windows 的保留区间（Hyper-V/WSL 动态分配，`netsh interface
+      # ipv4 show excludedportrange` 能看到），绑不上就换 8080。容器内仍是 3000，
+      # 443 的 HTTPS 反代走服务名，不受影响。
+      - "8080:3000"
     depends_on:
       - backend
+      - stands
+    restart: unless-stopped
+
+  # 立绘素材（换衣装、通话层叠加的 Spine）。把 corpus/stand 用 CORS 发出去，
+  # 地址就是 .env 里的 EIDOLON_STAND_ASSETS_URL。没有对象存储时用它顶替。
+  stands:
+    image: docker.m.daocloud.io/library/nginx:alpine
+    volumes:
+      - ./corpus/stand:/stands:ro
+      - ./deploy/stands-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # 根证书也放在这里发（/ca.crt），手机用它来信任局域网的 HTTPS。
+      - ./certs:/certs:ro
+    ports:
+      - "8765:80"
+    restart: unless-stopped
+
+  # HTTPS：Tailscale 的证书 + 转发到前端。只在 `--profile https` 时起（证书要先由
+  # `tailscale cert` 生成到 certs/）。手机用它开页面才拿得到麦克风。
+  https:
+    profiles: ["https"]
+    image: docker.m.daocloud.io/library/nginx:alpine
+    volumes:
+      - ./deploy/https-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certs:/certs:ro
+    ports:
+      - "443:443"
+    depends_on:
+      - frontend
     restart: unless-stopped
 
 volumes:

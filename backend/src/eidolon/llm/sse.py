@@ -18,7 +18,9 @@ async def stream_events(
         async with client.stream("POST", url, json=body, headers=headers) as res:
             if res.status_code >= 400:
                 await res.aread()
-                raise LLMError(f"模型返回 {res.status_code}: {res.text[:500]}")
+                # The address too: a 404 is usually the wrong path, or a service that is not
+                # the one meant, and which URL was asked tells the two apart at a glance.
+                raise LLMError(f"模型返回 {res.status_code}（请求 {url}）: {res.text[:500]}")
             streamed = False
             other = ""  # what came instead of events, for the error message
             async for line in res.aiter_lines():

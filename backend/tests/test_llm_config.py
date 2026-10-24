@@ -500,7 +500,7 @@ async def test_a_refused_effort_is_named_ahead_of_what_the_service_said():
         await check_chat_llm(llm, "xhigh")
 
     assert str(raised.value).startswith(
-        "思考强度『极高』被服务拒绝：模型返回 400: "
+        "思考强度『极高』被服务拒绝：模型返回 400（请求 https://llm.example/v1/chat/completions）: "
         '{"error":{"message":"Unsupported value: \'xhigh\' is not supported"}}'
     )
 

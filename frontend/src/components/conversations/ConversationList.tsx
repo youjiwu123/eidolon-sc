@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { SignInButton } from "@/components/app/FailureNotice";
 import { MarkedAvatar } from "@/components/app/MarkedAvatar";
+import { GroupRows } from "./GroupRows";
 import { Button } from "@/components/ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
@@ -101,6 +102,7 @@ export function ConversationList({ selectedId }: { selectedId: string | null }) 
           <p className="px-4 py-6 text-center text-preview text-muted-foreground">{t.noMatch}</p>
         ) : (
           <>
+            <GroupRows characters={characters} />
             <ul aria-label={t.title}>
               {shown.rows.map((row) => {
                 const c = row.character;

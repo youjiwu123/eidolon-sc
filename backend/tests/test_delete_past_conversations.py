@@ -66,7 +66,7 @@ async def test_her_reach_outs_in_it_and_when_she_was_to_come_go_with_it(
         make_client, REACH_OUT,
         settings=replace(settings, reach_outs=True), random=FakeRandom(MIDDLE),
     )
-    last_contact(settings.database_path, past, clock.now - timedelta(hours=28))
+    last_contact(settings.database_path, past, clock.now - timedelta(hours=18))
     await backend_of(client).reach_outs.run_due()
     assert set(rows_mentioning(settings.database_path, past)) >= {
         "reach_outs", "reach_out_schedules",

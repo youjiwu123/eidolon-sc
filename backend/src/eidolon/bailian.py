@@ -441,3 +441,39 @@ def _event(message: str | bytes) -> dict:
 def _has_words(text: str) -> bool:
     """Whether `text` has any letter or digit in it: more than punctuation and spaces."""
     return any(unicodedata.category(c)[0] in "LN" for c in text)
+
+async def transcribe(
+    *,
+    api_key: str,
+    model: str,
+    region: "BailianRegion | None",
+    pcm: bytes,
+    hot_words: Sequence[str] = (),
+    proxy: str | None = None,
+) -> str:
+    """What the voice message `pcm` says (16 kHz, 16-bit, mono), transcribed whole: one task,
+    its audio sent a packet at a time, then finished and its sentences read back."""
+    regions = [region] if region is not None else list(REGION_URLS)
+    websocket, task_id, _ = await _start_task(
+        partial(connect, proxy=proxy), api_key, model, regions, hot_words
+    )
+    try:
+        for start in range(0, len(pcm), PACKET_BYTES):
+            await websocket.send(pcm[start : start + PACKET_BYTES])
+        await websocket.send(_finish_task_message(task_id))
+        said: list[str] = []
+        async with asyncio.timeout(FINISH_TIMEOUT):
+            async for message in websocket:
+                event = _event(message)
+                kind = event.get("header", {}).get("event")
+                if kind == "result-generated":
+                    sentence = event.get("payload", {}).get("output", {}).get("sentence")
+                    if isinstance(sentence, dict) and sentence.get("sentence_end"):
+                        text = str(sentence.get("text") or "").strip()
+                        if _has_words(text):
+                            said.append(text)
+                elif kind in ("task-finished", "task-failed"):
+                    break
+        return "".join(said)
+    finally:
+        await websocket.close()

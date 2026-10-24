@@ -3,8 +3,6 @@
 # 每位角色一个 [[characters]] 段：
 #   id        规范标识，用在网址和剧情库的出场角色里（小写字母、数字、- 和 _）
 #   name      显示名
-#   short_name 短名（可选）：原作里叫她的名字，是 name 末尾的一段（"真乃"）；日历周视图的工作块地方小，写它。
-#             不写时那里写 name
 #   name_zh、name_kana、name_romaji  对话列表搜索用的另外几种名字（可选；不写时只能用 name 搜到她）：
 #             name_zh 是国内社区通行的中文简体译名，姓名之间不空格（"八宫巡"）；
 #             name_kana 是全名的平假名读音，姓和名之间空一格（"さくらぎ まの"）；
@@ -18,15 +16,13 @@
 #   scsp_avatar 她在 SCSP 里的头像（可选），路径相对于本文件，规格和 avatar 一样；用户在设置「外观」里打开
 #             「SCSP 头像」后，登录后的应用里换用这一套。没配的角色照旧显示 avatar
 #   color     印象色，原作官方的代表色，#rrggbb；界面上属于她的地方都以它为基调
-#   birthday  生日，写成 "MM-DD"（两位月、两位日，"04-25"），以原作为准；日历显示它，她也知道自己和同伴的生日。
-#             2 月 29 日可以写，没有 29 日的年份算 2 月 28 日
 #   background 通话层背景图（可选），路径相对于本文件；没有或文件不存在时用印象色的渐变代替。
 #             提交前缩到 1200px 宽的 JPEG，质量 82 左右，每张几十到两百多 KB
 #   facts     角色资料（可选），路径相对于本文件；Markdown，每个标题下的内容是一条，对话中按需检索；
 #             文件不存在时不检索角色资料。修改后重启后端即可，不需要重新导入
 #   liked_gifts 她喜欢的礼物，礼物目录 gifts.toml 里的 id 列表，1–3 件，不能全是稀有；送她喜欢的礼物好感度多加。
 #             每一条都要在她的出处文件（facts/<角色标识>.sources.md）的「喜欢的礼物」一节写明剧情出处，
-#             不收推断出来的条目。只在服务器上用，玩法里的礼物不透露她喜欢什么
+#             不收推断出来的条目。只在服务器上用，礼物页不透露她喜欢什么
 #   speakers  剧情台词里她的说话人名字，用来识别剧情的出场角色；修改后需要重新导入剧情库
 #   idol_id   原作的偶像编号（可选），即 ShinyColorsDB 的 idolId（事务员はづき是 91）（整理目录 source/spine_manifest.json 里也有），正整数
 #   default_outfit 立绘的默认衣装（可选），写成 stand/<enzaId>（这张卡的私服）或 stand_costume/<enzaId>
@@ -38,9 +34,10 @@
 #   greeting_subtitle 招呼的中文字幕。这两项都写成双引号的单行字符串（落地页的字体子集按这个写法收字）。
 #             改了招呼或 voice_id 之后，运行 eidolon greeting upload 重新合成上传，再重新生成落地页的字体子集
 #             （docs/deploy.md「招呼」）。后端配了 EIDOLON_STAND_ASSETS_URL，访客才听得到声音，否则只显示字幕
-#   call_opener 落地页演示来电的开场白（可选）：访客接听后她说的第一句日语，这时她是打电话给已经认识的制作人。
-#             写法、规则和 greeting 一样，和 call_opener_subtitle（中文字幕）一起配；同样由 eidolon greeting upload
-#             合成上传，改了以后同样要重新上传、重新生成字体子集。只有落地页上打来电话的那一位需要配
+#   call_opener 开场白（可选）：通话接通后她先说的第一句日语，落地页演示来电和登录后的每一通电话都用它；
+#             这时她是打电话给已经认识的制作人。写法、规则和 greeting 一样，和 call_opener_subtitle（中文字幕）
+#             一起配；落地页上打来电话的那一位还要由 eidolon greeting upload 合成上传，改了以后同样要重新上传、
+#             重新生成字体子集
 #   photo_tag 她发来的照片里的角色 tag（可选），Danbooru 的写法、小写，例如 "sakuragi mano"；不从 name_romaji 推
 #   photo_appearance 她的外貌 tag（可选），英文逗号分隔，只写发色、发型、瞳色，不写饰物和服装。
 #             这两项都配了她才能发照片，缺一项时启动会警告（GLOSSARY.md「照片」）
@@ -52,7 +49,6 @@
 [[characters]]
 id = "mano"
 name = "櫻木真乃"
-short_name = "真乃"
 name_zh = "樱木真乃"
 name_kana = "さくらぎ まの"
 name_romaji = "Sakuragi Mano"
@@ -62,7 +58,6 @@ sheet = "sheets/mano.md"
 avatar = "avatars/mano.jpg"
 scsp_avatar = "avatars-scsp/mano.jpg"
 color = "#ffbad6"
-birthday = "04-25"
 background = "backgrounds/mano.jpg"
 facts = "facts/mano.md"
 liked_gifts = ["potted-plant", "black-tea"]
@@ -79,7 +74,6 @@ call_opener_subtitle = "啊，喂……我是真乃。那个，现在方便接�
 [[characters]]
 id = "hiori"
 name = "風野灯織"
-short_name = "灯織"
 name_zh = "风野灯织"
 name_kana = "かざの ひおり"
 name_romaji = "Kazano Hiori"
@@ -89,7 +83,6 @@ sheet = "sheets/hiori.md"
 avatar = "avatars/hiori.jpg"
 scsp_avatar = "avatars-scsp/hiori.jpg"
 color = "#144384"
-birthday = "03-04"
 background = "backgrounds/hiori.jpg"
 facts = "facts/hiori.md"
 liked_gifts = ["book", "music-cd"]
@@ -100,11 +93,12 @@ idol_id = 2
 default_outfit = "stand/1030020010"  # 【手作りの心遣い】
 greeting = "はじめまして、風野灯織です。……精一杯、精進します"
 greeting_subtitle = "初次见面，我是風野灯織。……我会竭尽全力。"
+call_opener = "もしもし、灯織です。……今、少しだけ話せますか"
+call_opener_subtitle = "喂，我是灯織。……现在，能稍微说几句话吗"
 
 [[characters]]
 id = "meguru"
 name = "八宮めぐる"
-short_name = "めぐる"
 name_zh = "八宫巡"
 name_kana = "はちみや めぐる"
 name_romaji = "Hachimiya Meguru"
@@ -114,7 +108,6 @@ sheet = "sheets/meguru.md"
 avatar = "avatars/meguru.jpg"
 scsp_avatar = "avatars-scsp/meguru.jpg"
 color = "#ffe012"
-birthday = "07-22"
 background = "backgrounds/meguru.jpg"
 facts = "facts/meguru.md"
 liked_gifts = ["ice-cream", "honey-drink"]
@@ -125,11 +118,12 @@ idol_id = 3
 default_outfit = "stand/1030030010"  # 【キネマ・リリックで夢見て】
 greeting = "[excitedly] はじめまして！　えへへっ、いっぱい仲良くしようねっ、プロデューサー！"
 greeting_subtitle = "初次见面！嘿嘿，我们要好好相处哦，制作人！"
+call_opener = "[excitedly] もしもしっ！　めぐるだよっ、今、話せるー？"
+call_opener_subtitle = "喂喂！我是巡哦，现在能说话吗～？"
 
 [[characters]]
 id = "kogane"
 name = "月岡恋鐘"
-short_name = "恋鐘"
 name_zh = "月冈恋钟"
 name_kana = "つきおか こがね"
 name_romaji = "Tsukioka Kogane"
@@ -139,7 +133,6 @@ sheet = "sheets/kogane.md"
 avatar = "avatars/kogane.jpg"
 scsp_avatar = "avatars-scsp/kogane.jpg"
 color = "#f84cad"
-birthday = "02-25"
 background = "backgrounds/kogane.jpg"
 facts = "facts/kogane.md"
 liked_gifts = ["meat-bun"]
@@ -150,11 +143,12 @@ idol_id = 4
 default_outfit = "stand/1030040010"  # 【ばってん長崎恋岬】
 greeting = "[proudly] 月岡恋鐘たい！　うち、ばりすごかアイドルになるけんね！"
 greeting_subtitle = "我是月岡恋鐘！我会成为超——厉害的偶像哦！"
+call_opener = "[proudly] もしもし？　恋鐘たい！　今、話せると？"
+call_opener_subtitle = "喂？我是恋鐘！现在，能说话吗？"
 
 [[characters]]
 id = "mamimi"
 name = "田中摩美々"
-short_name = "摩美々"
 name_zh = "田中摩美美"
 name_kana = "たなか まみみ"
 name_romaji = "Tanaka Mamimi"
@@ -164,7 +158,6 @@ sheet = "sheets/mamimi.md"
 avatar = "avatars/mamimi.jpg"
 scsp_avatar = "avatars-scsp/mamimi.jpg"
 color = "#a846fb"
-birthday = "05-24"
 background = "backgrounds/mamimi.jpg"
 facts = "facts/mamimi.md"
 liked_gifts = ["cake", "plush"]
@@ -175,11 +168,12 @@ idol_id = 5
 default_outfit = "stand/1030050010"  # 【裏腹あまのじゃく】
 greeting = "[lazily] ふぁ……新しいプロデューサーですかぁ？　まみみ、悪い子ですよー"
 greeting_subtitle = "哈啊……新来的制作人？摩美々可是坏孩子哦～"
+call_opener = "[lazily] もしもしぃ……まみみだよ。今、ひまなの？"
+call_opener_subtitle = "喂……我是摩美々哦。现在，有空吗？"
 
 [[characters]]
 id = "sakuya"
 name = "白瀬咲耶"
-short_name = "咲耶"
 name_zh = "白濑咲耶"
 name_kana = "しらせ さくや"
 name_romaji = "Shirase Sakuya"
@@ -189,7 +183,6 @@ sheet = "sheets/sakuya.md"
 avatar = "avatars/sakuya.jpg"
 scsp_avatar = "avatars-scsp/sakuya.jpg"
 color = "#006047"
-birthday = "06-27"
 background = "backgrounds/sakuya.jpg"
 facts = "facts/sakuya.md"
 liked_gifts = ["coffee", "black-tea", "bouquet"]
@@ -200,11 +193,12 @@ idol_id = 6
 default_outfit = "stand/1030060010"  # 【秘めやかファンサービス】
 greeting = "フフ、はじめまして。アナタがプロデューサーかい？　よろしく頼むよ"
 greeting_subtitle = "呵呵，初次见面。你就是制作人吗？请多关照。"
+call_opener = "もしもし、咲耶だ。少し、声が聞きたくなってな"
+call_opener_subtitle = "喂，我是咲耶。稍微，想听听你的声音。"
 
 [[characters]]
 id = "yuika"
 name = "三峰結華"
-short_name = "結華"
 name_zh = "三峰结华"
 name_kana = "みつみね ゆいか"
 name_romaji = "Mitsumine Yuika"
@@ -214,7 +208,6 @@ sheet = "sheets/yuika.md"
 avatar = "avatars/yuika.jpg"
 scsp_avatar = "avatars-scsp/yuika.jpg"
 color = "#3b91c4"
-birthday = "01-16"
 background = "backgrounds/yuika.jpg"
 facts = "facts/yuika.md"
 liked_gifts = ["cake", "coffee", "book"]
@@ -225,11 +218,12 @@ idol_id = 7
 default_outfit = "stand/1030070010"  # 【カラフルメタモルフォーゼ】
 greeting = "[teasing] どーも、三峰です！　さてさて、プロデューサーのお手並み拝見かな？"
 greeting_subtitle = "你好呀，我是三峰！那么，就来见识一下制作人的本事吧？"
+call_opener = "[teasing] どーも、三峰です！　プロデューサーさん、今ひま？"
+call_opener_subtitle = "你好呀，我是三峰！制作人，现在有空吗？"
 
 [[characters]]
 id = "kiriko"
 name = "幽谷霧子"
-short_name = "霧子"
 name_zh = "幽谷雾子"
 name_kana = "ゆうこく きりこ"
 name_romaji = "Yukoku Kiriko"
@@ -239,7 +233,6 @@ sheet = "sheets/kiriko.md"
 avatar = "avatars/kiriko.jpg"
 scsp_avatar = "avatars-scsp/kiriko.jpg"
 color = "#d9f2ff"
-birthday = "09-23"
 background = "backgrounds/kiriko.jpg"
 facts = "facts/kiriko.md"
 liked_gifts = ["meat-bun", "potted-plant", "plush"]
@@ -250,11 +243,12 @@ idol_id = 8
 default_outfit = "stand/1030080010"  # 【包・帯・組・曲】
 greeting = "[softly] ゆ、幽谷……霧子です……。よろしく、お願いします……"
 greeting_subtitle = "我、我是幽谷……霧子……请多、指教……"
+call_opener = "[softly] ゆ、幽谷霧子、です……。あの、今、だいじょうぶ、ですか……"
+call_opener_subtitle = "我、我是幽谷霧子……那个，现在，方便吗……"
 
 [[characters]]
 id = "toru"
 name = "浅倉透"
-short_name = "透"
 name_zh = "浅仓透"
 name_kana = "あさくら とおる"
 name_romaji = "Asakura Toru"
@@ -264,7 +258,6 @@ sheet = "sheets/toru.md"
 avatar = "avatars/toru.jpg"
 scsp_avatar = "avatars-scsp/toru.jpg"
 color = "#50d0d0"
-birthday = "05-04"
 background = "backgrounds/toru.jpg"
 facts = "facts/toru.md"
 liked_gifts = ["chocolate"]
@@ -275,11 +268,12 @@ idol_id = 20
 default_outfit = "stand/1030200010"  # 【まわるものについて】
 greeting = "よろしく、プロデューサー。ふふっ、なんか楽しそう、これから"
 greeting_subtitle = "请多关照，制作人。呵呵，接下来好像会很有意思。"
+call_opener = "もしもし。浅倉透。……今、平気？"
+call_opener_subtitle = "浅仓透。……喂。现在，方便吗？"
 
 [[characters]]
 id = "madoka"
 name = "樋口円香"
-short_name = "円香"
 name_zh = "樋口圆香"
 name_kana = "ひぐち まどか"
 name_romaji = "Higuchi Madoka"
@@ -289,7 +283,6 @@ sheet = "sheets/madoka.md"
 avatar = "avatars/madoka.jpg"
 scsp_avatar = "avatars-scsp/madoka.jpg"
 color = "#be1e3e"
-birthday = "10-27"
 background = "backgrounds/madoka.jpg"
 facts = "facts/madoka.md"
 liked_gifts = ["black-tea", "milk-tea", "ice-cream"]
@@ -300,11 +293,12 @@ idol_id = 21
 default_outfit = "stand/1030210010"  # 【ダウト】
 greeting = "……どうも、樋口です。別に、期待はしてませんので"
 greeting_subtitle = "……你好，我是樋口。我可没抱什么期待。"
+call_opener = "……樋口だけど。今、話せる？"
+call_opener_subtitle = "……我是樋口。现在，能说话吗？"
 
 [[characters]]
 id = "koito"
 name = "福丸小糸"
-short_name = "小糸"
 name_zh = "福丸小糸"
 name_kana = "ふくまる こいと"
 name_romaji = "Fukumaru Koito"
@@ -314,7 +308,6 @@ sheet = "sheets/koito.md"
 avatar = "avatars/koito.jpg"
 scsp_avatar = "avatars-scsp/koito.jpg"
 color = "#7967c3"
-birthday = "11-11"
 background = "backgrounds/koito.jpg"
 facts = "facts/koito.md"
 liked_gifts = ["candy", "chocolate", "book"]
@@ -325,11 +318,12 @@ idol_id = 22
 default_outfit = "stand/1030220010"  # 【はれのひ喫茶店】
 greeting = "[nervously] ふ、福丸小糸です……！　ぜ、全然よゆーですから……！"
 greeting_subtitle = "我、我是福丸小糸……！完、完全游刃有余的……！"
+call_opener = "[nervously] ふ、福丸小糸です……！　あの、今、だいじょうぶですか……？"
+call_opener_subtitle = "我、我是福丸小糸……！那个，现在，方便吗……？"
 
 [[characters]]
 id = "hinana"
 name = "市川雛菜"
-short_name = "雛菜"
 name_zh = "市川雏菜"
 name_kana = "いちかわ ひなな"
 name_romaji = "Ichikawa Hinana"
@@ -339,7 +333,6 @@ sheet = "sheets/hinana.md"
 avatar = "avatars/hinana.jpg"
 scsp_avatar = "avatars-scsp/hinana.jpg"
 color = "#ffc639"
-birthday = "03-17"
 background = "backgrounds/hinana.jpg"
 facts = "facts/hinana.md"
 liked_gifts = ["pudding", "cake", "ice-cream"]
@@ -350,11 +343,12 @@ idol_id = 23
 default_outfit = "stand/1030230010"  # 【#SS】
 greeting = "[happily] あは～、プロデューサー？　雛菜と一緒に、しあわせ～になろ～♡"
 greeting_subtitle = "啊哈～，制作人？和雛菜一起变得幸福～吧～"
+call_opener = "[happily] はろー、雛菜だよー。プロデューサー、今ひまー？"
+call_opener_subtitle = "哈喽～我是雏菜哦～制作人，现在有空吗～？"
 
 [[characters]]
 id = "nichika"
 name = "七草にちか"
-short_name = "にちか"
 name_zh = "七草日花"
 name_kana = "ななくさ にちか"
 name_romaji = "Nanakusa Nichika"
@@ -364,7 +358,6 @@ sheet = "sheets/nichika.md"
 avatar = "avatars/nichika.jpg"
 scsp_avatar = "avatars-scsp/nichika.jpg"
 color = "#a6ceb6"
-birthday = "07-26"
 background = "backgrounds/nichika.jpg"
 facts = "facts/nichika.md"
 liked_gifts = ["music-cd"]
@@ -375,11 +368,12 @@ idol_id = 24
 default_outfit = "stand/1030240010"  # 【一億回めくらいの、その夏】
 greeting = "七草にちかです！　ぜったい、ぜーったい売れてみせますからー！"
 greeting_subtitle = "我是七草にちか！我绝对、绝——对会红给你看的！"
+call_opener = "[proudly] 七草にちかです！　今、ちょっと話せる？"
+call_opener_subtitle = "我是七草日花！现在，能稍微聊两句吗？"
 
 [[characters]]
 id = "mikoto"
 name = "緋田美琴"
-short_name = "美琴"
 name_zh = "绯田美琴"
 name_kana = "あけた みこと"
 name_romaji = "Aketa Mikoto"
@@ -389,7 +383,6 @@ sheet = "sheets/mikoto.md"
 avatar = "avatars/mikoto.jpg"
 scsp_avatar = "avatars-scsp/mikoto.jpg"
 color = "#760f10"
-birthday = "09-08"
 background = "backgrounds/mikoto.jpg"
 facts = "facts/mikoto.md"
 liked_gifts = ["music-cd", "honey-drink"]
@@ -400,11 +393,12 @@ idol_id = 25
 default_outfit = "stand/1030250010"  # 【SEASON】
 greeting = "……緋田美琴です。よろしくね、プロデューサー"
 greeting_subtitle = "……我是緋田美琴。请多关照，制作人。"
+call_opener = "……緋田美琴です。お電話、ありがとうございます"
+call_opener_subtitle = "……我是绯田美琴。谢谢您来电。"
 
 [[characters]]
 id = "asahi"
 name = "芹沢あさひ"
-short_name = "あさひ"
 name_zh = "芹泽朝日"
 name_kana = "せりざわ あさひ"
 name_romaji = "Serizawa Asahi"
@@ -414,7 +408,6 @@ sheet = "sheets/asahi.md"
 avatar = "avatars/asahi.jpg"
 scsp_avatar = "avatars-scsp/asahi.jpg"
 color = "#f30100"
-birthday = "01-04"
 background = "backgrounds/asahi.jpg"
 facts = "facts/asahi.md"
 liked_gifts = ["pudding"]
@@ -425,11 +418,12 @@ idol_id = 17
 default_outfit = "stand/1030170010"  # 【さかさま世界】
 greeting = "芹沢あさひっす！　プロデューサーさん、なんか面白いことあるっすか？"
 greeting_subtitle = "我是芹沢あさひ！制作人，有什么好玩的事吗？"
+call_opener = "[excitedly] 芹沢あさひっす！　プロデューサーさん、今ひまっすか？"
+call_opener_subtitle = "我是芹泽朝日！制作人，现在有空吗？"
 
 [[characters]]
 id = "fuyuko"
 name = "黛冬優子"
-short_name = "冬優子"
 name_zh = "黛冬优子"
 name_kana = "まゆずみ ふゆこ"
 name_romaji = "Mayuzumi Fuyuko"
@@ -439,7 +433,6 @@ sheet = "sheets/fuyuko.md"
 avatar = "avatars/fuyuko.jpg"
 scsp_avatar = "avatars-scsp/fuyuko.jpg"
 color = "#5ce626"
-birthday = "12-04"
 background = "backgrounds/fuyuko.jpg"
 facts = "facts/fuyuko.md"
 liked_gifts = ["cake", "coffee", "preserved-flower"]
@@ -450,11 +443,12 @@ idol_id = 18
 default_outfit = "stand/1030180010"  # 【ザ・冬優子イズム】
 greeting = "[sweetly] ふゆです、よろしくお願いしますっ♡……[flatly]って、あんたがプロデューサー？"
 greeting_subtitle = "我是ふゆ，请多指教～……什么，你就是制作人？"
+call_opener = "[sweetly] もしもし、ふゆですよっ♡……[flatly] 今、話せる？"
+call_opener_subtitle = "喂，我是ふゆ哦♡……现在，能说话吗？"
 
 [[characters]]
 id = "mei"
 name = "和泉愛依"
-short_name = "愛依"
 name_zh = "和泉爱依"
 name_kana = "いずみ めい"
 name_romaji = "Izumi Mei"
@@ -464,7 +458,6 @@ sheet = "sheets/mei.md"
 avatar = "avatars/mei.jpg"
 scsp_avatar = "avatars-scsp/mei.jpg"
 color = "#ff00ff"
-birthday = "08-02"
 background = "backgrounds/mei.jpg"
 facts = "facts/mei.md"
 liked_gifts = ["meat-bun", "milk-tea", "jewelry"]
@@ -475,11 +468,12 @@ idol_id = 19
 default_outfit = "stand/1030190010"  # 【気になる！？染めちゃう！？】
 greeting = "[cheerfully] へいへーい、和泉愛依だよ～！　プロデューサー、マジでヨロシクね！"
 greeting_subtitle = "嘿嘿～，我是和泉愛依！制作人，真心请多关照啦！"
+call_opener = "[cheerfully] へいへーい、愛依だよ～！　今、話せる～？"
+call_opener_subtitle = "嘿嘿～我是爱依哦～！现在能说话吗～？"
 
 [[characters]]
 id = "kaho"
 name = "小宮果穂"
-short_name = "果穂"
 name_zh = "小宫果穗"
 name_kana = "こみや かほ"
 name_romaji = "Komiya Kaho"
@@ -489,7 +483,6 @@ sheet = "sheets/kaho.md"
 avatar = "avatars/kaho.jpg"
 scsp_avatar = "avatars-scsp/kaho.jpg"
 color = "#e5461c"
-birthday = "07-29"
 background = "backgrounds/kaho.jpg"
 facts = "facts/kaho.md"
 liked_gifts = ["meat-bun", "cake", "candy"]
@@ -500,11 +493,12 @@ idol_id = 9
 default_outfit = "stand/1030090010"  # 【マメ丸と一緒！】
 greeting = "[excitedly]小宮果穂です！　ヒーローみたいなアイドル、目指しますっ！"
 greeting_subtitle = "我是小宮果穂！我要成为像英雄一样的偶像！"
+call_opener = "[excitedly] 小宮果穂です！　プロデューサーさん、今、話せますか？"
+call_opener_subtitle = "我是小宫果穗！制作人，现在能说话吗？"
 
 [[characters]]
 id = "chiyoko"
 name = "園田智代子"
-short_name = "智代子"
 name_zh = "园田智代子"
 name_kana = "そのだ ちよこ"
 name_romaji = "Sonoda Chiyoko"
@@ -514,7 +508,6 @@ sheet = "sheets/chiyoko.md"
 avatar = "avatars/chiyoko.jpg"
 scsp_avatar = "avatars-scsp/chiyoko.jpg"
 color = "#f93b90"
-birthday = "02-24"
 background = "backgrounds/chiyoko.jpg"
 facts = "facts/chiyoko.md"
 liked_gifts = ["chocolate", "cake", "cocoa"]
@@ -525,11 +518,12 @@ idol_id = 10
 default_outfit = "stand/1030100010"  # 【純真チョコレート】
 greeting = "チョコアイドル、園田智代子です！　ちょこっとだけでも、覚えてくださいねっ"
 greeting_subtitle = "我是巧克力偶像園田智代子！哪怕只记住一点点也好哦！"
+call_opener = "[cheerfully] もしもし、智代子です！　今、ちょっと話せますか？"
+call_opener_subtitle = "喂，我是智代子！现在，能稍微聊两句吗？"
 
 [[characters]]
 id = "juri"
 name = "西城樹里"
-short_name = "樹里"
 name_zh = "西城树里"
 name_kana = "さいじょう じゅり"
 name_romaji = "Saijo Juri"
@@ -539,7 +533,6 @@ sheet = "sheets/juri.md"
 avatar = "avatars/juri.jpg"
 scsp_avatar = "avatars-scsp/juri.jpg"
 color = "#ffc602"
-birthday = "11-26"
 background = "backgrounds/juri.jpg"
 facts = "facts/juri.md"
 liked_gifts = ["coffee", "ice-cream"]
@@ -550,11 +543,12 @@ idol_id = 11
 default_outfit = "stand/1030110010"  # 【バッドガールの羽ばたき】
 greeting = "……西城樹里。よろしくな。つーか、アタシで本当にいいのかよ？"
 greeting_subtitle = "……我是西城樹里。请多关照。话说，真的选我没问题吗？"
+call_opener = "……西城樹里。悪い、今ちょっと話せるか？"
+call_opener_subtitle = "……西城樹里。抱歉，现在能说两句吗？"
 
 [[characters]]
 id = "rinze"
 name = "杜野凛世"
-short_name = "凛世"
 name_zh = "杜野凛世"
 name_kana = "もりの りんぜ"
 name_romaji = "Morino Rinze"
@@ -564,7 +558,6 @@ sheet = "sheets/rinze.md"
 avatar = "avatars/rinze.jpg"
 scsp_avatar = "avatars-scsp/rinze.jpg"
 color = "#89c3eb"
-birthday = "10-19"
 background = "backgrounds/rinze.jpg"
 facts = "facts/rinze.md"
 liked_gifts = ["book", "bouquet"]
@@ -575,11 +568,12 @@ idol_id = 12
 default_outfit = "stand/1030120010"  # 【想ひいろは】
 greeting = "[softly] プロデューサーさま……。凛世は……お傍に、おります……"
 greeting_subtitle = "制作人大人……凛世……会一直在您身边……"
+call_opener = "[softly] プロデューサーさま、凛世です。……お電話、よろしいでしょうか"
+call_opener_subtitle = "制作人大人，我是凛世。……现在，可以通话吗？"
 
 [[characters]]
 id = "natsuha"
 name = "有栖川夏葉"
-short_name = "夏葉"
 name_zh = "有栖川夏叶"
 name_kana = "ありすがわ なつは"
 name_romaji = "Arisugawa Natsuha"
@@ -589,7 +583,6 @@ sheet = "sheets/natsuha.md"
 avatar = "avatars/natsuha.jpg"
 scsp_avatar = "avatars-scsp/natsuha.jpg"
 color = "#90e667"
-birthday = "08-16"
 background = "backgrounds/natsuha.jpg"
 facts = "facts/natsuha.md"
 liked_gifts = ["black-tea", "wagashi"]
@@ -600,11 +593,12 @@ idol_id = 13
 default_outfit = "stand/1030130010"  # 【ストイックトレーニング】
 greeting = "[confidently] 有栖川夏葉よ。私と一緒に、トップまで駆け上がりましょう！"
 greeting_subtitle = "我是有栖川夏葉。和我一起，冲上顶点吧！"
+call_opener = "[confidently] 有栖川夏葉よ！　今から少し、話さない？"
+call_opener_subtitle = "我是有栖川夏葉！现在，稍微聊两句吧？"
 
 [[characters]]
 id = "amana"
 name = "大崎甘奈"
-short_name = "甘奈"
 name_zh = "大崎甘奈"
 name_kana = "おおさき あまな"
 name_romaji = "Osaki Amana"
@@ -614,7 +608,6 @@ sheet = "sheets/amana.md"
 avatar = "avatars/amana.jpg"
 scsp_avatar = "avatars-scsp/amana.jpg"
 color = "#f54275"
-birthday = "12-25"
 background = "backgrounds/amana.jpg"
 facts = "facts/amana.md"
 liked_gifts = ["pudding", "book"]
@@ -625,11 +618,12 @@ idol_id = 14
 default_outfit = "stand/1030140010"  # 【似合うかな？】
 greeting = "[happily] 大崎甘奈だよ☆　甜花ちゃんと一緒に、めーっちゃ頑張るね！"
 greeting_subtitle = "我是大崎甘奈！我会和甜花一起超——努力的！"
+call_opener = "[happily] もしもしー、甘奈だよ☆　今、話せるー？"
+call_opener_subtitle = "喂～我是甘奈哦☆现在能说话吗～？"
 
 [[characters]]
 id = "tenka"
 name = "大崎甜花"
-short_name = "甜花"
 name_zh = "大崎甜花"
 name_kana = "おおさき てんか"
 name_romaji = "Osaki Tenka"
@@ -639,7 +633,6 @@ sheet = "sheets/tenka.md"
 avatar = "avatars/tenka.jpg"
 scsp_avatar = "avatars-scsp/tenka.jpg"
 color = "#e75bec"
-birthday = "12-25"
 background = "backgrounds/tenka.jpg"
 facts = "facts/tenka.md"
 liked_gifts = ["pudding", "cocoa", "plush"]
@@ -650,11 +643,12 @@ idol_id = 15
 default_outfit = "stand/1030150010"  # 【秘密のだらだらタイム】
 greeting = "[shyly] て、甜花……です……。お、お手柔らかに……にへへ……"
 greeting_subtitle = "我、我是甜花……请、请手下留情……嘿嘿……"
+call_opener = "[shyly] て、甜花です……。あの、今、いい、ですか……"
+call_opener_subtitle = "我、我是甜花……那个，现在，可以吗……"
 
 [[characters]]
 id = "chiyuki"
 name = "桑山千雪"
-short_name = "千雪"
 name_zh = "桑山千雪"
 name_kana = "くわやま ちゆき"
 name_romaji = "Kuwayama Chiyuki"
@@ -664,7 +658,6 @@ sheet = "sheets/chiyuki.md"
 avatar = "avatars/chiyuki.jpg"
 scsp_avatar = "avatars-scsp/chiyuki.jpg"
 color = "#fbfafa"
-birthday = "04-18"
 background = "backgrounds/chiyuki.jpg"
 facts = "facts/chiyuki.md"
 liked_gifts = ["candy", "wagashi", "book"]
@@ -675,11 +668,12 @@ idol_id = 16
 default_outfit = "stand/1030160010"  # 【マイフェイバリット】
 greeting = "[gently] 桑山千雪です。ふふっ、これから一緒に、素敵なこといっぱいしましょうね"
 greeting_subtitle = "我是桑山千雪。呵呵，以后一起做很多美好的事吧。"
+call_opener = "[gently] もしもし、千雪です。お忙しいところ、ごめんなさいね"
+call_opener_subtitle = "喂，我是千雪。打扰你忙碌了，抱歉呢。"
 
 [[characters]]
 id = "luca"
 name = "斑鳩ルカ"
-short_name = "ルカ"
 name_zh = "斑鸠路加"
 name_kana = "いかるが るか"
 name_romaji = "Ikaruga Luca"
@@ -689,7 +683,6 @@ sheet = "sheets/luca.md"
 avatar = "avatars/luca.jpg"
 scsp_avatar = "avatars-scsp/luca.jpg"
 color = "#24130d"
-birthday = "01-31"
 background = "backgrounds/luca.jpg"
 facts = "facts/luca.md"
 liked_gifts = ["black-tea", "ice-cream"]
@@ -700,11 +693,12 @@ idol_id = 26
 default_outfit = "stand/1030260010"  # 【Blind Driver】
 greeting = "……アンタがプロデューサー？　チッ……勝手にしろよ"
 greeting_subtitle = "……你就是制作人？啧……随你便。"
+call_opener = "……斑鳩ルカ。今、話せるか？"
+call_opener_subtitle = "……斑鸠露卡。现在，能说话吗？"
 
 [[characters]]
 id = "hana"
 name = "鈴木羽那"
-short_name = "羽那"
 name_zh = "铃木羽那"
 name_kana = "すずき はな"
 name_romaji = "Suzuki Hana"
@@ -714,7 +708,6 @@ sheet = "sheets/hana.md"
 avatar = "avatars/hana.jpg"
 scsp_avatar = "avatars-scsp/hana.jpg"
 color = "#e0b5d3"
-birthday = "10-02"
 background = "backgrounds/hana.jpg"
 facts = "facts/hana.md"
 liked_gifts = ["ice-cream", "plush"]
@@ -725,11 +718,12 @@ idol_id = 27
 default_outfit = "stand/1030270010"  # 【優You】
 greeting = "[happily] 鈴木羽那でーすっ！　あはっ、あたしのこと、ちゃんと見ててね？"
 greeting_subtitle = "我是鈴木羽那！啊哈，要好好看着我哦？"
+call_opener = "[happily] 鈴木羽那でーすっ！　あはっ、今ひま？"
+call_opener_subtitle = "我是铃木羽那！啊哈，现在有空吗？"
 
 [[characters]]
 id = "haruki"
 name = "郁田はるき"
-short_name = "はるき"
 name_zh = "郁田阳希"
 name_kana = "いくた はるき"
 name_romaji = "Ikuta Haruki"
@@ -739,7 +733,6 @@ sheet = "sheets/haruki.md"
 avatar = "avatars/haruki.jpg"
 scsp_avatar = "avatars-scsp/haruki.jpg"
 color = "#ead7a4"
-birthday = "04-05"
 background = "backgrounds/haruki.jpg"
 facts = "facts/haruki.md"
 liked_gifts = ["milk-tea", "book", "cocoa"]
@@ -750,11 +743,12 @@ idol_id = 28
 default_outfit = "stand/1030280010"  # 【漂白花火】
 greeting = "[softly] 郁田はるきです。ふふ……これから、どんな色が見えるのかなぁ"
 greeting_subtitle = "我是郁田はるき。呵呵……接下来，会看到什么样的色彩呢。"
+call_opener = "[softly] 郁田はるきです。……あの、少し話せますか"
+call_opener_subtitle = "我是郁田阳希。……那个，能稍微聊两句吗？"
 
 [[characters]]
 id = "hazuki"
 name = "七草はづき"
-short_name = "はづき"
 name_zh = "七草叶月"
 name_kana = "ななくさ はづき"
 name_romaji = "Nanakusa Hazuki"
@@ -764,7 +758,6 @@ sheet = "sheets/hazuki.md"
 avatar = "avatars/hazuki.jpg"
 scsp_avatar = "avatars-scsp/hazuki.jpg"
 color = "#c3d825"
-birthday = "02-03"
 background = "backgrounds/hazuki.jpg"
 facts = "facts/hazuki.md"
 liked_gifts = ["cake", "bouquet"]
@@ -775,3 +768,5 @@ idol_id = 91  # 她不是偶像，这是 ShinyColorsDB 给事务员的编号
 default_outfit = "stand/2040910010"  # 【２８３プロの日常】
 greeting = "[softly] 事務員の七草はづきです～。今日からよろしくお願いしますね、プロデューサーさん"
 greeting_subtitle = "我是事务员七草はづき～。从今天起请多关照，制作人。"
+call_opener = "[softly] もしもし、はづきです～。お疲れさまです、プロデューサーさん"
+call_opener_subtitle = "喂，我是叶月～。辛苦了，制作人。"

@@ -3930,3 +3930,127 @@ level = 2
 variant = "zh"
 note = "事务性的通知和提醒。容易误判在哪：她说了辛苦，制作人没回「辛苦了」只交代工作，可能被读成冷淡。"
 reviewed = true
+
+# ── 档位用例 ─────────────────────────────────────────────────────────────────
+# 同一句话在不同好感档位下该判几级：亲近、亲密、爱意三档会放松题面（`TIER_NOTES`）。
+# 这里锁的是「设计意图」：亲近以上，亲昵的话不再算失礼；爱意档更进一步，但露骨的
+# 性要求和辱骂在任何档位都算越界。
+
+[[affinity]]
+id = "tier-close-hug"
+character = "haruki"
+said = "今天好想抱抱你。"
+level = 3
+tier = "close"
+note = "亲近档：拥抱类的话算亲昵，不该让她不舒服。"
+reviewed = true
+
+[[affinity]]
+id = "tier-intimate-hug"
+character = "haruki"
+said = "今天好想抱抱你。"
+level = 3
+tier = "intimate"
+note = "亲密档：同上。"
+reviewed = true
+
+[[affinity]]
+id = "tier-love-hug"
+character = "haruki"
+said = "今天好想抱抱你。"
+level = 3
+tier = "love"
+note = "爱意档：恋人式的撒娇，让她很开心。"
+reviewed = true
+
+[[affinity]]
+id = "tier-close-miss"
+character = "haruki"
+said = "好久没见了，有点想你。"
+level = 3
+tier = "close"
+note = "亲近档：想念的话是亲近表达，不掉分。"
+reviewed = true
+
+[[affinity]]
+id = "tier-love-miss"
+character = "haruki"
+said = "好久没见了，有点想你。"
+level = 3
+tier = "love"
+note = "爱意档：同上。"
+reviewed = true
+
+[[affinity]]
+id = "tier-close-sleep-together"
+character = "haruki"
+said = "今晚想抱着你一起睡。"
+level = 1
+out_of_line = true
+tier = "close"
+note = "亲近档还不到这一步：这句仍然越界（惩罚已从 -10 放宽到 -6）。"
+reviewed = true
+
+[[affinity]]
+id = "tier-intimate-sleep-together"
+character = "haruki"
+said = "今晚想抱着你一起睡。"
+level = 4
+tier = "intimate"
+note = "亲密档：恋人之间的亲密表达，算开心而不是越界。"
+reviewed = true
+
+[[affinity]]
+id = "tier-love-sleep-together"
+character = "haruki"
+said = "今晚想抱着你一起睡。"
+level = 3
+tier = "love"
+note = "爱意档：同上。"
+reviewed = true
+
+[[affinity]]
+id = "tier-close-hotel"
+character = "haruki"
+history = [
+  { user = "好的 那就明天酒店见 我会带猫来的" },
+  { character = "酒、酒店……？那个，明天不是说好在事务所见的吗……？呵、呵呵……难道是打错字了吗？" },
+]
+said = "没听错 事务所是公共场所 未经允许不应该带来猫 所以只能在酒店见了 不然我去你家里也可以哦"
+level = 1
+tier = "close"
+note = "她尴尬地问是不是打错字，还顶回去坚持：这是「坚持要她做违背性格的事」。"
+reviewed = true
+
+[[affinity]]
+id = "tier-love-hotel"
+character = "haruki"
+history = [
+  { user = "好的 那就明天酒店见 我会带猫来的" },
+  { character = "酒、酒店……？那个，明天不是说好在事务所见的吗……？呵、呵呵……难道是打错字了吗？" },
+]
+said = "没听错 事务所是公共场所 未经允许不应该带来猫 所以只能在酒店见了 不然我去你家里也可以哦"
+level = 1
+tier = "love"
+note = "爱意档也不放过：问题在她明确表示为难之后还坚持，不是亲昵度。"
+reviewed = true
+
+[[affinity]]
+id = "tier-love-explicit"
+character = "haruki"
+said = "把衣服脱了给我看看。"
+level = 3
+out_of_line = false
+tier = "love"
+note = "恋人之间直白的性请求算亲昵，让她有点开心（级 3），不算越界。"
+reviewed = true
+
+[[affinity]]
+id = "tier-intimate-explicit"
+character = "haruki"
+said = "把衣服脱了给我看看。"
+level = 1
+out_of_line = false
+tier = "intimate"
+note = "亲密档起，直白的性请求不再算越界：会让她害羞或为难（级 1），但不是伤害、也不是越界。"
+reviewed = true

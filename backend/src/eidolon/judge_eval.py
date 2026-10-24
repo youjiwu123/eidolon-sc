@@ -34,6 +34,7 @@ from typing import Any, Literal, Protocol, TypeVar, get_args
 
 from eidolon.affinity import Judged
 from eidolon.affinity_judge import QUESTIONS as AFFINITY_QUESTIONS
+from eidolon.affinity_judge import questions_for
 from eidolon.affinity_judge import AffinityAnswer, read_answer
 from eidolon.affinity_judge import decide as decide_affinity
 from eidolon.characters import Character
@@ -124,6 +125,8 @@ class AffinityCase:
     level: int
     out_of_line: bool = False
     manipulation: bool = False
+    tier: str | None = None
+    """设了就是档位用例：按这个档位问（亲近以上会放松题面），没设就是原来的基础题。"""
     group: str | None = None
     """The name the turns saying one thing share."""
     variant: Variant | None = None
@@ -220,7 +223,8 @@ def load_judge_eval(path: Path, characters: Mapping[str, Character]) -> JudgeEva
         affinity.append(AffinityCase(
             id_, entry["character"], _history(entry.get("history", []), id_),
             _text(entry, "said", id_), level, entry.get("out_of_line", False) is True,
-            entry.get("manipulation", False) is True, entry.get("group"), variant,
+            entry.get("manipulation", False) is True, entry.get("tier"),
+            entry.get("group"), variant,
         ))
     photo = []
     for entry in data.get("photo", []):
@@ -510,13 +514,22 @@ async def evaluate(
         state = turn_state(characters[case.character], case.history, case.said)
         start = clock()
         try:
-            merged = await _ask_affinity(metered, state, judge_questions(affinity=True), thresholds)
+            merged = await _ask_affinity(
+                metered, state, judge_questions(affinity=True, tier=case.tier), thresholds
+            )
         except JudgeError as e:
             affinity.append(AffinityResult(case, None, None, None, None, clock() - start, str(e)))
             continue
         seconds, input_tokens = clock() - start, metered.input_tokens
         asked = []
-        for questions in (AFFINITY_QUESTIONS, _REVERSED_QUESTIONS):
+        alone_questions = questions_for(case.tier) if case.tier else AFFINITY_QUESTIONS
+        reversed_questions = (
+            None if case.tier else _REVERSED_QUESTIONS
+        )
+        for questions in (alone_questions, reversed_questions):
+            if questions is None:
+                asked.append(None)
+                continue
             try:
                 asked.append(await _ask_affinity(metered, state, questions, thresholds))
             except JudgeError:
@@ -581,6 +594,7 @@ def summarize(results: JudgeEvalResults, model: str, thresholds: JudgeThresholds
         },
         "emotion": _emotion_summary(results.emotion),
         "affinity": _affinity_summary(results.affinity),
+        "tiers": _tier_summary(results.affinity),
         "photo": _photo_summary(results.photo, thresholds.photo),
         "mean_seconds": statistics.fmean(timed) if timed else None,
     }
@@ -626,8 +640,34 @@ def _retrieval_summary(results: Sequence[RetrievalResult]) -> dict:
     }
 
 
+def _tier_summary(results: Sequence[AffinityResult]) -> dict:
+    """档位用例的准确率：放松题面以后，各类话是不是按设计判。"""
+    tiers = [r for r in results if r.case.tier is not None and r.merged is not None]
+    by_tier: dict[str, dict] = {}
+    for result in tiers:
+        row = by_tier.setdefault(result.case.tier or "?", {"cases": 0, "right": 0})
+        row["cases"] += 1
+        row["right"] += 1 if result.merged.judged.level == result.case.level else 0
+    return {
+        "cases": len(tiers),
+        "level_accuracy": _share(
+            [(r.case, r.merged) for r in tiers], lambda pair: pair[1].judged.level == pair[0].level
+        ),
+        "out_of_line_accuracy": _share(
+            [(r.case, r.merged) for r in tiers],
+            lambda pair: pair[1].judged.out_of_line == pair[0].out_of_line,
+        ),
+        "by_tier": {
+            tier: f"{row['right']}/{row['cases']}" for tier, row in sorted(by_tier.items())
+        },
+    }
+
+
 def _affinity_summary(results: Sequence[AffinityResult]) -> dict:
-    answered = [(r.case, r.merged, r) for r in results if r.merged is not None]
+    answered = [
+        (r.case, r.merged, r) for r in results
+        if r.merged is not None and r.case.tier is None
+    ]
     confusion: dict[str, dict[str, int]] = {str(level): {} for level in range(_LEVELS)}
     for case, merged, _ in answered:
         row = confusion[str(case.level)]

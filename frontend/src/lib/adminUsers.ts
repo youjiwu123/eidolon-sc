@@ -5,6 +5,7 @@
 
 import { copy } from "@/i18n";
 import { api, expectNoContent, json } from "@/lib/api";
+import type { Tier } from "@/lib/affinity";
 import { formatCount } from "@/lib/dashboard";
 import type { Provider } from "@/lib/signIn";
 
@@ -239,4 +240,31 @@ export async function takeOffUserLimits(id: string): Promise<AdminUserDetails> {
  * identities can never sign in or be linked again. */
 export async function deleteUser(id: string): Promise<void> {
   await expectNoContent(await api(`/api/admin/users/${encodeURIComponent(id)}`, { method: "DELETE" }));
+}
+
+/** A user's affinity with one character, as the admin console shows and sets it: by value
+ * and tier. The user never sees the value. */
+export type AdminAffinity = { character_id: string; value: number; tier: Tier };
+
+/** The user's affinity with every character, by value and tier. */
+export async function getAdminAffinities(id: string): Promise<AdminAffinity[]> {
+  const body = await json<{ affinities: AdminAffinity[] }>(
+    await api(`/api/admin/users/${encodeURIComponent(id)}/affinity`),
+  );
+  return body.affinities;
+}
+
+/** Set the user's affinity with the character by hand, out of any cooldown; 0–120. */
+export async function setAdminAffinity(
+  id: string,
+  characterId: string,
+  value: number,
+): Promise<AdminAffinity> {
+  return json<AdminAffinity>(
+    await api(`/api/admin/users/${encodeURIComponent(id)}/affinity`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ character_id: characterId, value }),
+    }),
+  );
 }

@@ -55,7 +55,7 @@ async def test_her_line_has_one_unseen_till_her_conversation_is_read_and_no_othe
     kogane = await start_conversation(client, "kogane")
     await send_turn(client, kogane, "你好")
     for conversation in (mano, kogane):
-        last_contact(settings.database_path, conversation, clock.now - timedelta(hours=28))
+        last_contact(settings.database_path, conversation, clock.now - timedelta(hours=18))
     assert await unseen(client) == {"mano": False, "kogane": False}
 
     await backend_of(client).reach_outs.run_due()
@@ -73,7 +73,7 @@ async def test_a_new_conversation_she_has_not_reached_out_in_has_none_unseen(
     client, _, clock, conversation = await talked(
         make_client, REACH_OUT, random=FakeRandom(MIDDLE)
     )
-    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=28))
+    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=18))
     await backend_of(client).reach_outs.run_due()
     assert await unseen(client) == {"mano": True}
 
@@ -86,7 +86,7 @@ async def test_reading_a_past_conversation_has_its_reach_outs_seen(
     make_client: ClientFactory, settings: Settings
 ):
     client, _, clock, past = await talked(make_client, REACH_OUT, random=FakeRandom(MIDDLE))
-    last_contact(settings.database_path, past, clock.now - timedelta(hours=28))
+    last_contact(settings.database_path, past, clock.now - timedelta(hours=18))
     await backend_of(client).reach_outs.run_due()
     await start_conversation(client)  # elsewhere, its record not read here
     assert seen_in(settings.database_path, past) == [False]

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import { AppLink } from "@/components/app/AppLink";
 import { FailureNotice } from "@/components/app/FailureNotice";
+import { AffinityEditor } from "@/components/app/admin/AffinityEditor";
 import { AdminPage } from "@/components/app/admin/AdminPage";
 import { AdminTrail } from "@/components/app/admin/AdminTrail";
 import { MetadataList, MetadataListItem } from "@/components/app/admin/MetadataList";
@@ -245,6 +246,8 @@ export function AdminUserDetails({ id }: { id: string }) {
           )}
         </CardFooter>
       </Card>
+
+      <AffinityEditor userId={user.id} />
 
       <AdminTrail value={user.name} />
       <RecentUsage usage={user.usage} />

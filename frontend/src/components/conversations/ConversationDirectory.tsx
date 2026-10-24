@@ -49,7 +49,7 @@ import { toFailure, type Failure } from "@/lib/failure";
 import { getGiftState, type GiftState } from "@/lib/gifts";
 import { keepListPreferences, listPreferences, NO_PREFERENCES, type ListPreferences } from "@/lib/listPreferences";
 import { isLive, LiveConversation, NOT_OPEN, type LiveCall } from "@/lib/liveConversation";
-import { departure, isGiftsSubpageInView } from "@/lib/navShell";
+import { departure, isGiftsInView } from "@/lib/navShell";
 import { hasNewRewards, keepRewardsSeenUpTo, rewardsSeenUpTo, type Rewarded } from "@/lib/rewards";
 import { later } from "@/lib/seenOnDevice";
 
@@ -79,14 +79,14 @@ export type Directory = {
   /** 从头重新载入，给「重试」用。 */
   reload: () => void;
   /**
-   * 有没有新到的抽奖次数（lib/rewards），导航「玩法」和玩法页「礼物」卡上的点：好感度和礼物开着，最近一次到账
-   * 晚于这台设备上看过的。礼物子页在眼前（没被展开的通话层盖住）时不出，最近一次到账随即记成看过；导航上的点
-   * 另外在玩法页的任何一级上都不出（`navDots`）。最近一次到账随摘要每分钟拉一次；回合、送礼带着到账时当场更新。
+   * 「礼物」上该不该有点（lib/rewards）：好感度和礼物开着，最近一次到账晚于这台设备上看过的。礼物页在眼前
+   * （没被展开的通话层盖住）时不出，最近一次到账随即记成看过。最近一次到账随摘要每分钟拉一次；回合、送礼带着
+   * 到账时当场更新。
    */
   newRewards: boolean;
-  /** 已知的最近一次到账（ISO）；玩法页和子页据此知道自己读到的状态落后了。 */
+  /** 已知的最近一次到账（ISO）；礼物页据此知道自己读到的状态落后了。 */
   rewardedAt: string | null;
-  /** 玩法页或子页读到（或送礼改了）礼物状态：开关和最近一次到账以它为准。 */
+  /** 礼物页读到（或送礼改了）礼物状态：开关和最近一次到账以它为准。 */
   giftsRead: (state: Pick<GiftState, "open" | "rewarded_at">) => void;
   /** 这台设备上的隐藏和置顶；和角色一起读出，读不到时什么都没整理。 */
   preferences: ListPreferences;
@@ -203,7 +203,7 @@ export function DirectoryProvider({ children }: { children: ReactNode }) {
   const snapshot = useSyncExternalStore(held?.subscribe ?? noSubscription, held?.snapshot ?? notHeld, notHeld);
   const liveCall = held && isLive(snapshot.call) ? snapshot.call : null;
   const call: CallInList = held && liveCall ? { characterId: held.characterId, state: liveCall } : null;
-  const giftsInView = isGiftsSubpageInView(pathname, held !== null && snapshot.layer?.collapsed === false);
+  const giftsInView = isGiftsInView(pathname, held !== null && snapshot.layer?.collapsed === false);
 
   /** 拉回来的摘要，第 `since` 次看过之后又在本地看过的那几位记成看过。 */
   const received = useCallback((all: LatestConversation[], since: number): Record<string, LatestConversation> => {
@@ -285,7 +285,7 @@ export function DirectoryProvider({ children }: { children: ReactNode }) {
     { atOnceWhenShown: true },
   );
 
-  // 礼物子页在眼前：到账一来就记成看过（这台设备上），所以不出点。
+  // 礼物页在眼前：到账一来就记成看过（这台设备上），所以不出点。
   useEffect(() => {
     if (!giftsInView || !userId || rewards.at === null) return;
     if (!hasNewRewards({ isOpen: true, rewardedAt: rewards.at, seenAt: rewardsSeenAt })) return;
@@ -372,7 +372,7 @@ export function DirectoryProvider({ children }: { children: ReactNode }) {
         onListChanged: refresh,
         onRewarded: rewarded,
         startCall: (conversationId, preferences, handlers) => startCall(conversationId, preferences, handlers, userId),
-        sendTurn: (conversationId, text) => sendTurn(conversationId, text, userId),
+        sendTurn: (conversationId, text, image) => sendTurn(conversationId, text, userId, image),
         getPhoto,
         getAffinity,
         preferences: { load: loadCallPreferences, save: saveCallPreferences },

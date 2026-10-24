@@ -12,7 +12,9 @@ import type { ConversationEvent, EventKind, Photo, PhotoStatus, Recorded, Segmen
  * photo she sent with it (GLOSSARY.md「照片」), null if none; and, in a turn the user asked for a
  * photo with this hour's used up, when they may ask again (ISO), which is never recorded. */
 export type Entry =
-  | { kind: "user"; key: string; text: string; at: string }
+  | { kind: "user"; key: string; text: string; at: string; image?: string }
+  /** `image` is where the picture the user sent with it is: the server's, or, before the
+   * turn is recorded, the one this browser picked, as a data URL. */
   | {
       kind: "event";
       key: string;
@@ -43,7 +45,7 @@ export type LogAction =
   /** The conversation was opened or started: show its record. */
   | { type: "loaded"; messages: Recorded[] }
   /** The user typed something outside a call, at `at`; show it before the backend takes it up. */
-  | { type: "submitted"; text: string; at: string }
+  | { type: "submitted"; text: string; at: string; image?: string }
   /** The backend took up the user's words, heard at `at`; words typed keep the time they were sent. */
   | (Extract<TurnEvent, { type: "user" }> & { at: string })
   | Exclude<TurnEvent, { type: "user" }>
@@ -62,7 +64,7 @@ export function conversationLog(log: ConversationLog, action: LogAction): Conver
     case "loaded":
       return { entries: action.messages.map(toEntry), turn: null };
     case "submitted":
-      return opened(withoutTurn(log), action.text, action.at, false);
+      return opened(withoutTurn(log), action.text, action.at, false, action.image);
     case "user":
       if (log.turn && !log.turn.confirmed) {
         return { ...log, turn: { ...log.turn, confirmed: true } };
@@ -129,13 +131,19 @@ export function replySoFar(log: ConversationLog): Segment[] {
 /** Opens a turn with the user's words and an empty reply to fill. The turn in progress is
  * always the last two entries, so an entry's position is never shared by two entries
  * shown together and serves as its key until the entry is replaced by the recorded one. */
-function opened(log: ConversationLog, text: string, at: string, confirmed: boolean): ConversationLog {
+function opened(
+  log: ConversationLog,
+  text: string,
+  at: string,
+  confirmed: boolean,
+  image?: string,
+): ConversationLog {
   const position = log.entries.length;
   const turn = { confirmed, userKey: `new-${position}`, replyKey: `new-${position + 1}` };
   return {
     entries: [
       ...log.entries,
-      { kind: "user", key: turn.userKey, text, at },
+      { kind: "user", key: turn.userKey, text, at, image },
       { kind: "character", key: turn.replyKey, segments: [], pending: true, at, affinity: null, photo: null },
     ],
     turn,
@@ -204,7 +212,13 @@ function toEntry(message: Recorded): Entry {
     };
   }
   return message.role === "user"
-    ? { kind: "user", key: `m${message.id}`, text: message.text ?? "", at: message.created_at }
+    ? {
+        kind: "user",
+        key: `m${message.id}`,
+        text: message.text ?? "",
+        at: message.created_at,
+        ...(message.image ? { image: `/api/messages/${message.id}/image` } : {}),
+      }
     : {
         kind: "character",
         key: `m${message.id}`,

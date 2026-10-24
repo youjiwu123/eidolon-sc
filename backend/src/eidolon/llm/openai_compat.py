@@ -1,10 +1,12 @@
 """OpenAI-compatible Chat Completions provider."""
 
+import base64
 import json
 from collections.abc import AsyncIterator, Sequence
 from typing import Any
 
 import httpx
+
 
 from eidolon.billing import bill
 from eidolon.config import ReasoningEffort
@@ -73,13 +75,13 @@ class OpenAICompatLLM:
             if forbid_calls:
                 body["tool_choice"] = "none"
         body = merge_extra_body(body, self._extra_body)
-        calls: dict[int, dict[str, Any]] = {}  # index → id, name and arguments so far
+        calls: dict[int, dict[str, Any]] = {}  # index 鈫?id, name and arguments so far
         reasoning = ""
         usage: dict[str, Any] | None = None
         headers = {"Authorization": f"Bearer {self._api_key}"}
         async for event in stream_events(self._client, self._url, body, headers):
             if event.get("error"):
-                raise LLMError(f"模型在流式输出中报错: {event['error']}")
+                raise LLMError(f"妯″瀷鍦ㄦ祦寮忚緭鍑轰腑鎶ラ敊: {event['error']}")
             if isinstance(event.get("usage"), dict):  # some services send it as it grows
                 usage = event["usage"]
             for choice in event.get("choices") or []:
@@ -167,6 +169,22 @@ def _message(message: ChatMessage) -> dict[str, Any]:
             assistant["reasoning_content"] = reasoning
         assistant["tool_calls"] = [_call(call, extras.get(call.id)) for call in message.tool_calls]
         return assistant
+    if message.image is not None:  # the user sent a picture: parts, as this protocol takes them
+        data, mime = message.image
+        return {
+            "role": message.role,
+            "content": [
+                *(
+                    [{"type": "text", "text": message.content}]
+                    if message.content
+                    else []
+                ),
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{mime};base64,{base64.b64encode(data).decode()}"},
+                },
+            ],
+        }
     return {"role": message.role, "content": message.content}
 
 
@@ -182,3 +200,4 @@ def _call(call: ToolCall, extra: dict[str, Any] | None) -> dict[str, Any]:
     if extra is not None:
         sent["extra_content"] = extra
     return sent
+

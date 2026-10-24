@@ -1,5 +1,6 @@
-"""Anthropic Messages provider."""
+﻿"""Anthropic Messages provider."""
 
+import base64
 import logging
 from collections.abc import AsyncIterator, Sequence
 from typing import Any
@@ -82,8 +83,8 @@ class AnthropicLLM:
             if forbid_calls:
                 body["tool_choice"] = {"type": "none"}
         body = merge_extra_body(body, self._extra_body)
-        calls: dict[int, dict[str, Any]] = {}  # content block index → the tool_use so far
-        # Content block index → a thinking or redacted_thinking block as streamed so far,
+        calls: dict[int, dict[str, Any]] = {}  # content block index 鈫?the tool_use so far
+        # Content block index 鈫?a thinking or redacted_thinking block as streamed so far,
         # which goes back as it came: its signature binds it to what came before.
         thinking: dict[int, dict[str, Any]] = {}
         usage: dict[str, Any] = {}  # as the message started, updated as it goes
@@ -122,7 +123,7 @@ class AnthropicLLM:
                     log.warning("the model stopped early: %s", stop)
             elif kind == "error":
                 error = event.get("error") or {}
-                raise LLMError(f"模型在流式输出中报错: {error.get('message') or event}")
+                raise LLMError(f"妯″瀷鍦ㄦ祦寮忚緭鍑轰腑鎶ラ敊: {error.get('message') or event}")
         if usage:
             cached = usage.get("cache_read_input_tokens")
             bill(
@@ -204,6 +205,19 @@ def _messages(messages: Sequence[ChatMessage]) -> list[dict[str, Any]]:
                 {"type": "tool_use", "id": c.id, "name": c.name, "input": c.arguments or {}}
                 for c in message.tool_calls
             )
+        elif message.image is not None:  # the user sent a picture: an image block, then the text
+            data, mime = message.image
+            content = [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": mime,
+                        "data": base64.b64encode(data).decode(),
+                    },
+                },
+                *([{"type": "text", "text": message.content}] if message.content else []),
+            ]
         elif message.content:
             content = message.content
         else:

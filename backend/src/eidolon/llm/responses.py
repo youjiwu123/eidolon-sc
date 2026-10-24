@@ -1,5 +1,6 @@
-"""OpenAI Responses provider."""
+﻿"""OpenAI Responses provider."""
 
+import base64
 import json
 import logging
 from collections.abc import AsyncIterator, Sequence
@@ -81,8 +82,8 @@ class ResponsesLLM:
             if forbid_calls:
                 body["tool_choice"] = "none"
         body = merge_extra_body(body, self._extra_body)
-        calls: dict[int, dict[str, str]] = {}  # output index → call id, name and arguments
-        # Output index → a reasoning item as done, which goes back as it came: with `store`
+        calls: dict[int, dict[str, str]] = {}  # output index 鈫?call id, name and arguments
+        # Output index 鈫?a reasoning item as done, which goes back as it came: with `store`
         # off, its encrypted content is all the service keeps of what the model thought.
         reasoning: dict[int, dict[str, Any]] = {}
         headers = {"Authorization": f"Bearer {self._api_key}"}
@@ -109,10 +110,10 @@ class ResponsesLLM:
                 if (call := calls.get(event.get("output_index", -1))) is not None:
                     call["arguments"] += event.get("delta") or ""
             elif kind == "error":
-                raise LLMError(f"模型在流式输出中报错: {event.get('message') or event}")
+                raise LLMError(f"妯″瀷鍦ㄦ祦寮忚緭鍑轰腑鎶ラ敊: {event.get('message') or event}")
             elif kind == "response.failed":
                 error = (event.get("response") or {}).get("error") or event
-                raise LLMError(f"模型生成失败: {error}")
+                raise LLMError(f"妯″瀷鐢熸垚澶辫触: {error}")
             elif kind == "response.incomplete":
                 details = (event.get("response") or {}).get("incomplete_details")
                 log.warning("the model's reply is incomplete: %s", details)
@@ -149,7 +150,25 @@ def _items(message: ChatMessage) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = [
         item for r in message.reasoning for item in r.data.get("items", ())
     ]
-    if message.content:
+    if message.image is not None:  # the user sent a picture: input parts, as this protocol takes them
+        data, mime = message.image
+        items.append(
+            {
+                "role": message.role,
+                "content": [
+                    *(
+                        [{"type": "input_text", "text": message.content}]
+                        if message.content
+                        else []
+                    ),
+                    {
+                        "type": "input_image",
+                        "image_url": f"data:{mime};base64,{base64.b64encode(data).decode()}",
+                    },
+                ],
+            }
+        )
+    elif message.content:
         items.append({"role": message.role, "content": message.content})
     items.extend(
         {

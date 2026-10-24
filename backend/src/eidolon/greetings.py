@@ -243,6 +243,13 @@ async def _upload(
         report.deleted.append(key)
 
 
+async def voice_line(fish: FishAudioSettings, text: str, voice_id: str) -> bytes:
+    """`text` said in the voice `voice_id`, as mp3: what a reply's speaker beside the bubble
+    asks for, voiced then and kept with the message (`message_speech`)."""
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        return await _voice(client, fish, text, voice_id, None)
+
+
 async def _voice(
     client: httpx.AsyncClient,
     fish: FishAudioSettings,

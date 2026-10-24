@@ -79,8 +79,8 @@ async def test_switched_off_none_of_them_comes_and_switched_on_again_she_comes_w
     )
     other = await start_conversation(client, "kogane")
     await send_turn(client, other, "我去练习了")
-    for each in (conversation, other):  # trust: 20–36 hours, at its start, as drawn once on
-        last_contact(settings.database_path, each, clock.now - timedelta(hours=20))
+    for each in (conversation, other):  # trust: 12–24 hours, at its start, as drawn once on
+        last_contact(settings.database_path, each, clock.now - timedelta(hours=12))
     reach_out = backend_of(client).reach_outs
 
     await switch(client, False)

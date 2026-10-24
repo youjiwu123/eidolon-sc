@@ -11,7 +11,6 @@ import pytest
 
 from eidolon.characters import CharacterConfigError, Fact, load_characters, parse_facts
 from eidolon.config import Settings, stand_assets_url_from_env
-from eidolon.producer import Birthday
 from tests.conftest import (
     AVATAR, BACKGROUND, KOGANE_SHEET, MANO_SHEET, SCSP_AVATAR, CharacterConfig, ClientFactory,
 )
@@ -38,11 +37,9 @@ async def test_character_list_shows_name_intro_avatar_colour_and_background_but_
             "avatar_url": "/api/characters/mano/avatar",
             "scsp_avatar_url": "/api/characters/mano/scsp-avatar",
             "color": "#ffbad6",
-            "birthday": "04-25",
             "background_url": "/api/characters/mano/background",
             "stand": None,  # no stand assets URL is configured
             "idol_id": 1,
-            "short_name": None,  # none configured
             "name_zh": None,  # none configured
             "name_kana": None,
             "name_romaji": None,
@@ -61,11 +58,9 @@ async def test_character_list_shows_name_intro_avatar_colour_and_background_but_
             "avatar_url": None,
             "scsp_avatar_url": None,
             "color": "#f84cad",
-            "birthday": "02-25",
             "background_url": None,
             "stand": None,
             "idol_id": None,
-            "short_name": None,
             "name_zh": None,  # none configured
             "name_kana": None,
             "name_romaji": None,
@@ -108,18 +103,6 @@ async def test_character_list_gives_the_other_names_she_is_searched_by(
     assert [listed["meguru"][f] for f in ("name_zh", "name_kana", "name_romaji")] == [
         "八宫巡", "はちみや めぐる", "Hachimiya Meguru",
     ]
-
-
-async def test_character_list_gives_her_short_name(
-    make_client: ClientFactory, characters: CharacterConfig
-):
-    characters.add("meguru", "八宮めぐる", "sheet")
-    add_raw(characters, 'short_name = "めぐる"')
-    client = make_client(FakeLLM(), user=None)
-
-    listed = {c["id"]: c for c in (await client.get("/api/characters")).json()}
-
-    assert listed["meguru"]["short_name"] == "めぐる"
 
 
 async def test_avatar_is_served_without_a_session_so_img_tags_can_load_it(
@@ -396,15 +379,14 @@ def test_character_missing_a_required_field_is_rejected(tmp_path: Path):
     config = CharacterConfig(tmp_path)
     config.write("characters.toml", '[[characters]]\nid = "mano"\nname = "櫻木真乃"\n')
 
-    with pytest.raises(CharacterConfigError, match="intro、voice_id、sheet、color、birthday"):
+    with pytest.raises(CharacterConfigError, match="intro、voice_id、sheet、color"):
         load_characters(config.path)
 
 
 def test_character_id_must_be_safe_to_put_in_a_url(tmp_path: Path):
     config = CharacterConfig(tmp_path)
     config.write("characters.toml", '[[characters]]\nid = "Mano San"\nname = "a"\n'
-                 'intro = ""\nvoice_id = "v"\nsheet = "s.md"\ncolor = "#ffbad6"\n'
-                 'birthday = "04-25"\n')
+                 'intro = ""\nvoice_id = "v"\nsheet = "s.md"\ncolor = "#ffbad6"\n')
 
     with pytest.raises(CharacterConfigError, match="Mano San"):
         load_characters(config.path)
@@ -549,24 +531,6 @@ def test_other_names_must_each_be_a_line_of_text(tmp_path: Path, field: str, val
         load_characters(config.path)
 
 
-@pytest.mark.parametrize("value", ['"  "', '"灯織"', '"櫻木真乃"'])
-def test_short_name_must_be_the_end_of_her_name(tmp_path: Path, value: str):
-    """A line of text her name ends with, and shorter than it: 「真乃」."""
-    config = CharacterConfig(tmp_path).add("mano", "櫻木真乃", "a")
-    add_raw(config, f"short_name = {value}")
-
-    with pytest.raises(CharacterConfigError, match="角色 mano 的 short_name"):
-        load_characters(config.path)
-
-
-def test_repository_gives_each_character_her_short_name():
-    loaded = load_characters(REPO_CHARACTERS / "characters.toml")
-
-    for c in loaded.values():
-        assert c.short_name and c.name.endswith(c.short_name) and c.short_name != c.name, c.id
-    assert loaded["fuyuko"].short_name == "冬優子"
-
-
 def test_repository_gives_each_character_her_other_names():
     """Her reading has a space between her family name and her given name, and is the
     world setting's reading of her name but for it (an idol's, or the office staff's for the
@@ -581,28 +545,6 @@ def test_repository_gives_each_character_her_other_names():
         assert c.name_zh and c.name_kana and c.name_romaji, c.id
         assert c.name_kana.count(" ") == 1 and c.name_kana.replace(" ", "") == readings[c.name], c.id
         assert re.fullmatch(r"[A-Z][a-z]+ [A-Z][a-z]+", c.name_romaji), c.id
-
-
-def test_repository_gives_each_character_her_birthday():
-    """As her character facts' first paragraph tells it; each has one, as loading needs."""
-    loaded = load_characters(REPO_CHARACTERS / "characters.toml")
-
-    assert loaded["madoka"].birthday == Birthday(10, 27)
-    assert loaded["hazuki"].birthday == Birthday(2, 3)
-
-
-@pytest.mark.parametrize("birthday", ["04/25", "02-30"])
-def test_birthday_must_be_a_day_of_the_year_as_mm_dd(tmp_path: Path, birthday: str):
-    config = CharacterConfig(tmp_path).add("mano", "櫻木真乃", "a", birthday=birthday)
-
-    with pytest.raises(CharacterConfigError, match="角色 mano 的 birthday"):
-        load_characters(config.path)
-
-
-def test_birthday_may_be_february_29(tmp_path: Path):
-    config = CharacterConfig(tmp_path).add("mano", "櫻木真乃", "a", birthday="02-29")
-
-    assert load_characters(config.path)["mano"].birthday == Birthday(2, 29)
 
 
 def test_repository_gives_each_character_her_photo_tags():
@@ -694,7 +636,14 @@ def test_stand_assets_url_is_read_without_its_trailing_slash(monkeypatch: pytest
     assert stand_assets_url_from_env() == "http://localhost:8765"
 
 
-@pytest.mark.parametrize("value", ["stand.example/eidolon", "/stand", "ftp://stand.example"])
+def test_a_path_on_the_site_is_allowed_for_the_stands(monkeypatch: pytest.MonkeyPatch):
+    """`/stands` 这种同源路径是合法的：站点从哪个地址打开就从哪拿素材。"""
+    monkeypatch.setenv("EIDOLON_STAND_ASSETS_URL", "/stands")
+
+    assert stand_assets_url_from_env() == "/stands"
+
+
+@pytest.mark.parametrize("value", ["stand.example/eidolon", "ftp://stand.example"])
 def test_stand_assets_url_must_be_a_web_address(monkeypatch: pytest.MonkeyPatch, value: str):
     monkeypatch.setenv("EIDOLON_STAND_ASSETS_URL", value)
 

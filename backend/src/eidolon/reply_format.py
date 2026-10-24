@@ -53,7 +53,7 @@ _CUES = """\
 常用的有 [happily] [excitedly] [shyly] [embarrassed] [sadly] [disappointed] [sulking] [angrily] [worried] [surprised] [gently] [teasing] [whispering] [laughing] [sleepy]，也可以自由描述，例如 [laughing nervously]，但不要超过四个英文单词。
 - 每段最多两个语气提示；拿不准要不要加时就不加。
 - 语气提示只写在 <ja> 里；<zh> 只翻译台词，不带语气提示。
-- 只用方括号加英文，不要用圆括号、方头括号或其他括号，也不要用日语或中文写提示。"""
+- 语气提示只用方括号加英文，不要用圆括号、方头括号写语气提示，也不要用日语或中文写提示。"""
 
 _DIRECTED_CUES = """\
 通话时日语原文会被念出来，配音会像演员一样照你的指示念。情绪明显的段，可以在日语原文里加上语气提示，告诉配音这里该怎么念：
@@ -66,7 +66,20 @@ _DIRECTED_CUES = """\
 <ja>[small laugh] これ、<whisper>みんなには内緒</whisper>だよ？</ja><zh>这个，要对大家保密哦？</zh>
 - 每段最多两三处语气提示；拿不准要不要加时就不加。
 - 语气提示只写在 <ja> 里；<zh> 只翻译台词，不带语气提示。
-- 只用方括号加英文，和上面这几种成对标签；不要用圆括号、方头括号或别的标签，也不要用日语或中文写提示。"""
+- 语气提示只用方括号加英文，和上面这几种成对标签；不要用圆括号、方头括号或别的标签写语气提示，也不要用日语或中文写提示。"""
+
+
+_ACTIONS = """\
+# 动作与神态
+对方可能在消息里用圆括号写他正在做的动作，例如（走过去抱住她）。那不是他说出口的话，
+是他真的这么做了：把它当成已经发生的事来回应，不要说成「你说你抱了我」这类话，也不必复述他的动作。
+你也可以用圆括号写自己的动作和神态，例如（红着脸低下头）（轻轻握住他的手）。
+- 写在 <ja> 里，一次回复最多一处，十个字以内，只写看得见或听得见的动作，不写心理活动。
+- 中文字幕里在相同的位置写同样的动作，例如（红着脸低下头）。
+- 对方用圆括号写了动作时，你必须用一个动作回应，不要只回台词。例如对方说「（抱住她）今天辛苦了」，你可以答：
+<ja>（肩をびくっと跳ねさせて）わっ……えへへ、ありがとうございます。</ja><zh>（肩膀猛地一跳）哇……欸嘿嘿，谢谢您。</zh>
+- 对方没用动作、气氛也平常时，不必每句都加。
+"""
 
 FORMAT_INSTRUCTIONS = _FORMAT + _CUES
 """The reply format, for a turn whose reply is voiced, if at all, with a model that reads
@@ -80,6 +93,11 @@ directions as long as a director's (`delivery_cues.TAG_READERS`)."""
 def format_instructions(voiced_by: FishAudioModel | None) -> str:
     """The reply format, for a turn voiced with `voiced_by`; None for one not voiced."""
     return DIRECTED_FORMAT_INSTRUCTIONS if voiced_by in TAG_READERS else FORMAT_INSTRUCTIONS
+
+
+TEXT_ACTIONS = _ACTIONS
+"""Round-bracket actions, told to a text turn only: a call's lines are read aloud, and her
+actions in them would be read out too."""
 
 
 @dataclass(frozen=True)

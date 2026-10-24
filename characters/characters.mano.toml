@@ -1,0 +1,638 @@
+# 角色配置。新增角色、替换音色 ID 只需要改这个文件，不需要改代码。
+#
+# 每位角色一个 [[characters]] 段：
+#   id        规范标识，用在网址和剧情库的出场角色里（小写字母、数字、- 和 _）
+#   name      显示名
+#   name_zh、name_kana、name_romaji  对话列表搜索用的另外几种名字（可选；不写时只能用 name 搜到她）：
+#             name_zh 是国内社区通行的中文简体译名，姓名之间不空格（"八宫巡"）；
+#             name_kana 是全名的平假名读音，姓和名之间空一格（"さくらぎ まの"）；
+#             name_romaji 是全名的罗马字，写成「姓 名」，中间空一格、首字母大写，用平文式、不加长音符号
+#             （"Asakura Toru"）；官方拼法和平文式不同时以官方为准（"Ikaruga Luca"）。都写成单行字符串
+#   intro     角色选择页上的简介
+#   voice_id  Fish Audio 音色 ID。音色要设为公开：自带 Fish Audio 密钥的用户用自己的 key 调用它（ADR-0003 的修订）
+#   sheet     人设文件，路径相对于本文件
+#   avatar    头像图片（可选），路径相对于本文件；文件不存在时不显示头像。界面上最大显示 112px，
+#             所以提交前缩到 224×224（两倍屏）的 JPEG，质量 82 左右，每张十几 KB；比这大或超过 32 KB 测试会失败
+#   scsp_avatar 她在 SCSP 里的头像（可选），路径相对于本文件，规格和 avatar 一样；用户在设置「外观」里打开
+#             「SCSP 头像」后，登录后的应用里换用这一套。没配的角色照旧显示 avatar
+#   color     印象色，原作官方的代表色，#rrggbb；界面上属于她的地方都以它为基调
+#   background 通话层背景图（可选），路径相对于本文件；没有或文件不存在时用印象色的渐变代替。
+#             提交前缩到 1200px 宽的 JPEG，质量 82 左右，每张几十到两百多 KB
+#   facts     角色资料（可选），路径相对于本文件；Markdown，每个标题下的内容是一条，对话中按需检索；
+#             文件不存在时不检索角色资料。修改后重启后端即可，不需要重新导入
+#   liked_gifts 她喜欢的礼物，礼物目录 gifts.toml 里的 id 列表，1–3 件，不能全是稀有；送她喜欢的礼物好感度多加。
+#             每一条都要在她的出处文件（facts/<角色标识>.sources.md）的「喜欢的礼物」一节写明剧情出处，
+#             不收推断出来的条目。只在服务器上用，礼物页不透露她喜欢什么
+#   speakers  剧情台词里她的说话人名字，用来识别剧情的出场角色；修改后需要重新导入剧情库
+#   idol_id   原作的偶像编号（可选），即 ShinyColorsDB 的 idolId（整理目录 source/spine_manifest.json 里也有），正整数
+#   default_outfit 立绘的默认衣装（可选），写成 stand/<enzaId>（这张卡的私服）或 stand_costume/<enzaId>
+#             （这张卡的演出服），enzaId 是卡的十位编号（source/spine_manifest.json 里的 enzaId）。用户没选过衣装时她穿这一套。
+#             idol_id、default_outfit 和后端的 EIDOLON_STAND_ASSETS_URL 都配好了，通话层才显示立绘，
+#             否则只显示背景图（docs/deploy.md「立绘素材」）
+#   greeting  落地页上的招呼（可选）：她对初次见面的制作人说的一句日语，可以带语气提示，写法和回复里的一样
+#             （例如 "[softly] はじめまして"；语气提示只给语音合成听，页面上不显示）。和 greeting_subtitle 一起配
+#   greeting_subtitle 招呼的中文字幕。这两项都写成双引号的单行字符串（落地页的字体子集按这个写法收字）。
+#             改了招呼或 voice_id 之后，运行 eidolon greeting upload 重新合成上传，再重新生成落地页的字体子集
+#             （docs/deploy.md「招呼」）。后端配了 EIDOLON_STAND_ASSETS_URL，访客才听得到声音，否则只显示字幕
+#   call_opener 落地页演示来电的开场白（可选）：访客接听后她说的第一句日语，这时她是打电话给已经认识的制作人。
+#             写法、规则和 greeting 一样，和 call_opener_subtitle（中文字幕）一起配；同样由 eidolon greeting upload
+#             合成上传，改了以后同样要重新上传、重新生成字体子集。只有落地页上打来电话的那一位需要配
+#   photo_tag 她发来的照片里的角色 tag（可选），Danbooru 的写法、小写，例如 "sakuragi mano"；不从 name_romaji 推
+#   photo_appearance 她的外貌 tag（可选），英文逗号分隔，只写发色、发型、瞳色，不写饰物和服装。
+#             这两项都配了她才能发照片，缺一项时启动会警告（GLOSSARY.md「照片」）
+#
+# 人设文件和角色资料是自己写的，提交进仓库：参照 sheets/example.md 编写 sheets/<角色标识>.md
+# （也可以先用 eidolon character draft-sheet 生成初稿再校对），参照 facts/example.md 编写 facts/<角色标识>.md。
+# 头像放在 avatars/ 下（SCSP 头像放在 avatars-scsp/ 下），通话层背景图放在 backgrounds/ 下，同样提交进仓库。
+
+[[characters]]
+id = "mano"
+name = "櫻木真乃"
+name_zh = "樱木真乃"
+name_kana = "さくらぎ まの"
+name_romaji = "Sakuragi Mano"
+intro = "illumination STARS 的中心。温柔又有点慢热，喜欢鸟，常和鸽子「ピーちゃん」在一起。"
+voice_id = "a1150f3d14ac46fb8ea59c7803cd8357"
+sheet = "sheets/mano.md"
+avatar = "avatars/mano.jpg"
+scsp_avatar = "avatars-scsp/mano.jpg"
+color = "#ffbad6"
+background = "backgrounds/mano.jpg"
+facts = "facts/mano.md"
+liked_gifts = ["potted-plant", "black-tea"]
+photo_tag = "sakuragi mano"
+photo_appearance = "brown hair, medium hair, brown eyes"
+speakers = ["真乃"]
+idol_id = 1
+default_outfit = "stand/1030010010"  # 【ナチュラルモード】
+greeting = "[shyly] ほわっ……プロデューサーさん、ですか？　よろしくお願いしますっ"
+greeting_subtitle = "呼哇……你就是制作人吗？请多指教！"
+call_opener = "[shyly] あっ、もしもし……真乃です。えっと、今、お電話だいじょうぶですか？"
+call_opener_subtitle = "啊，喂……我是真乃。那个，现在方便接电话吗？"
+
+[[characters]]
+id = "hiori"
+name = "風野灯織"
+name_zh = "风野灯织"
+name_kana = "かざの ひおり"
+name_romaji = "Kazano Hiori"
+intro = "illumination STARS 的成员。认真、对自己要求严格，嘴上不太会表达，其实很温柔，在一点点学着坦率。"
+voice_id = "df43849d16ae48fe87f5670b6a2b81b3"
+sheet = "sheets/hiori.md"
+avatar = "avatars/hiori.jpg"
+scsp_avatar = "avatars-scsp/hiori.jpg"
+color = "#144384"
+background = "backgrounds/hiori.jpg"
+facts = "facts/hiori.md"
+liked_gifts = ["book", "music-cd"]
+photo_tag = "kazano hiori"
+photo_appearance = "black hair, long hair, ponytail, blue eyes"
+speakers = ["灯織"]
+greeting = "はじめまして、風野灯織です。……精一杯、精進します"
+greeting_subtitle = "初次见面，我是風野灯織。……我会竭尽全力。"
+
+[[characters]]
+id = "meguru"
+name = "八宮めぐる"
+name_zh = "八宫巡"
+name_kana = "はちみや めぐる"
+name_romaji = "Hachimiya Meguru"
+intro = "illumination STARS 的成员。开朗热情、跟谁都能马上交上朋友，是大家的开心果，最喜欢和伙伴们在一起。"
+voice_id = "17ce7b6d4ccb43a2bedac1fdb4a219cb"
+sheet = "sheets/meguru.md"
+avatar = "avatars/meguru.jpg"
+scsp_avatar = "avatars-scsp/meguru.jpg"
+color = "#ffe012"
+background = "backgrounds/meguru.jpg"
+facts = "facts/meguru.md"
+liked_gifts = ["ice-cream", "honey-drink"]
+photo_tag = "hachimiya meguru"
+photo_appearance = "blonde hair, long hair, ahoge, low twintails, blue eyes"
+speakers = ["めぐる"]
+greeting = "[excitedly] はじめまして！　えへへっ、いっぱい仲良くしようねっ、プロデューサー！"
+greeting_subtitle = "初次见面！嘿嘿，我们要好好相处哦，制作人！"
+
+[[characters]]
+id = "kogane"
+name = "月岡恋鐘"
+name_zh = "月冈恋钟"
+name_kana = "つきおか こがね"
+name_romaji = "Tsukioka Kogane"
+intro = "L'Antica 的中心。来自长崎，开朗自信、说话带方言，梦想成为顶级偶像。"
+voice_id = "a11bfd046e924099a84f989fb4049e95"
+sheet = "sheets/kogane.md"
+avatar = "avatars/kogane.jpg"
+scsp_avatar = "avatars-scsp/kogane.jpg"
+color = "#f84cad"
+background = "backgrounds/kogane.jpg"
+facts = "facts/kogane.md"
+liked_gifts = ["meat-bun"]
+photo_tag = "tsukioka kogane"
+photo_appearance = "brown hair, long hair, wavy hair, ponytail, brown eyes"
+speakers = ["恋鐘"]
+greeting = "[proudly] 月岡恋鐘たい！　うち、ばりすごかアイドルになるけんね！"
+greeting_subtitle = "我是月岡恋鐘！我会成为超——厉害的偶像哦！"
+
+[[characters]]
+id = "mamimi"
+name = "田中摩美々"
+name_zh = "田中摩美美"
+name_kana = "たなか まみみ"
+name_romaji = "Tanaka Mamimi"
+intro = "L'Antica 的成员。我行我素、嫌麻烦，白天提不起劲，一到夜里就一个人在街上晃；最喜欢捉弄人。"
+voice_id = "1cbb1ba24d094810a6cada880dd8dec0"
+sheet = "sheets/mamimi.md"
+avatar = "avatars/mamimi.jpg"
+scsp_avatar = "avatars-scsp/mamimi.jpg"
+color = "#a846fb"
+background = "backgrounds/mamimi.jpg"
+facts = "facts/mamimi.md"
+liked_gifts = ["cake", "plush"]
+photo_tag = "tanaka mamimi"
+photo_appearance = "purple hair, long hair, twintails, diagonal bangs, purple eyes"
+speakers = ["摩美々"]
+greeting = "[lazily] ふぁ……新しいプロデューサーですかぁ？　まみみ、悪い子ですよー"
+greeting_subtitle = "哈啊……新来的制作人？摩美々可是坏孩子哦～"
+
+[[characters]]
+id = "sakuya"
+name = "白瀬咲耶"
+name_zh = "白濑咲耶"
+name_kana = "しらせ さくや"
+name_romaji = "Shirase Sakuya"
+intro = "L'Antica 的成员。举止像王子一样帅气，成绩优秀、运动万能，在女子学校里人气很高；其实很怕寂寞，对「可爱」还不太会应付。"
+voice_id = "3543f8d3e498439794f14be23dafbe89"
+sheet = "sheets/sakuya.md"
+avatar = "avatars/sakuya.jpg"
+scsp_avatar = "avatars-scsp/sakuya.jpg"
+color = "#006047"
+background = "backgrounds/sakuya.jpg"
+facts = "facts/sakuya.md"
+liked_gifts = ["coffee", "black-tea", "bouquet"]
+photo_tag = "shirase sakuya"
+photo_appearance = "black hair, long hair, high ponytail, yellow eyes"
+speakers = ["咲耶"]
+greeting = "フフ、はじめまして。アナタがプロデューサーかい？　よろしく頼むよ"
+greeting_subtitle = "呵呵，初次见面。你就是制作人吗？请多关照。"
+
+[[characters]]
+id = "yuika"
+name = "三峰結華"
+name_zh = "三峰结华"
+name_kana = "みつみね ゆいか"
+name_romaji = "Mitsumine Yuika"
+intro = "L'Antica 的成员。自由奔放、抓不住重点，爱给全事务所的人起昵称；戴着眼镜和帽子的大学生。"
+voice_id = "e6b09fdf01874e63adf5f8aa45c0d2ea"
+sheet = "sheets/yuika.md"
+avatar = "avatars/yuika.jpg"
+scsp_avatar = "avatars-scsp/yuika.jpg"
+color = "#3b91c4"
+background = "backgrounds/yuika.jpg"
+facts = "facts/yuika.md"
+liked_gifts = ["cake", "coffee", "book"]
+photo_tag = "mitsumine yuika"
+photo_appearance = "black hair, long hair, twintails, blue eyes"
+speakers = ["結華"]
+greeting = "[teasing] どーも、三峰です！　さてさて、プロデューサーのお手並み拝見かな？"
+greeting_subtitle = "你好呀，我是三峰！那么，就来见识一下制作人的本事吧？"
+
+[[characters]]
+id = "kiriko"
+name = "幽谷霧子"
+name_zh = "幽谷雾子"
+name_kana = "ゆうこく きりこ"
+name_romaji = "Yukoku Kiriko"
+intro = "L'Antica 的成员。安静内向、说话轻声细语，缠着绷带的银发女孩；喜欢花和「听」，总先替别人着想，还在医生和偶像之间犹豫。"
+voice_id = "115e921e1b4740b08f3ec723666b2b40"
+sheet = "sheets/kiriko.md"
+avatar = "avatars/kiriko.jpg"
+scsp_avatar = "avatars-scsp/kiriko.jpg"
+color = "#d9f2ff"
+background = "backgrounds/kiriko.jpg"
+facts = "facts/kiriko.md"
+liked_gifts = ["meat-bun", "potted-plant", "plush"]
+photo_tag = "yukoku kiriko"
+photo_appearance = "grey hair, long hair, twintails, purple eyes"
+speakers = ["霧子"]
+greeting = "[softly] ゆ、幽谷……霧子です……。よろしく、お願いします……"
+greeting_subtitle = "我、我是幽谷……霧子……请多、指教……"
+
+[[characters]]
+id = "toru"
+name = "浅倉透"
+name_zh = "浅仓透"
+name_kana = "あさくら とおる"
+name_romaji = "Asakura Toru"
+intro = "noctchill 的成员。自然体、按自己的节奏走的高二生，站在那里就有吸引人的气场；小时候和制作人在公园的攀登架上见过一面，如今想和他一起「のぼる」到顶。"
+voice_id = "db8fb218614745f6b854e24620c33445"
+sheet = "sheets/toru.md"
+avatar = "avatars/toru.jpg"
+scsp_avatar = "avatars-scsp/toru.jpg"
+color = "#50d0d0"
+background = "backgrounds/toru.jpg"
+facts = "facts/toru.md"
+liked_gifts = ["chocolate"]
+photo_tag = "asakura toru"
+photo_appearance = "purple hair, aqua hair, short hair, gradient hair, blue eyes"
+speakers = ["透"]
+greeting = "よろしく、プロデューサー。ふふっ、なんか楽しそう、これから"
+greeting_subtitle = "请多关照，制作人。呵呵，接下来好像会很有意思。"
+
+[[characters]]
+id = "madoka"
+name = "樋口円香"
+name_zh = "樋口圆香"
+name_kana = "ひぐち まどか"
+name_romaji = "Higuchi Madoka"
+intro = "noctchill 的成员。冷静、嘴不饶人的高二生，本来只是想确认青梅竹马浅倉透没被骗才找上制作人，结果自己也成了偶像；对制作人总是冷淡带刺。"
+voice_id = "9fa98a656a0d4242b6073fd955f5179b"
+sheet = "sheets/madoka.md"
+avatar = "avatars/madoka.jpg"
+scsp_avatar = "avatars-scsp/madoka.jpg"
+color = "#be1e3e"
+background = "backgrounds/madoka.jpg"
+facts = "facts/madoka.md"
+liked_gifts = ["black-tea", "milk-tea", "ice-cream"]
+photo_tag = "higuchi madoka"
+photo_appearance = "brown hair, short hair, purple eyes"
+speakers = ["円香"]
+greeting = "……どうも、樋口です。別に、期待はしてませんので"
+greeting_subtitle = "……你好，我是樋口。我可没抱什么期待。"
+
+[[characters]]
+id = "koito"
+name = "福丸小糸"
+name_zh = "福丸小糸"
+name_kana = "ふくまる こいと"
+name_romaji = "Fukumaru Koito"
+intro = "noctchill 的成员。个子最小、胆小怕生的高一生，一慌就「ぴゃ！？」；在青梅竹马面前却嘴硬说「よゆーです」，总是一个人偷偷努力，最怕被大家落下。"
+voice_id = "8ee2e17bbead4610a17f324fe540be49"
+sheet = "sheets/koito.md"
+avatar = "avatars/koito.jpg"
+scsp_avatar = "avatars-scsp/koito.jpg"
+color = "#7967c3"
+background = "backgrounds/koito.jpg"
+facts = "facts/koito.md"
+liked_gifts = ["candy", "chocolate", "book"]
+photo_tag = "fukumaru koito"
+photo_appearance = "dark blue hair, long hair, twintails, purple eyes"
+speakers = ["小糸"]
+greeting = "[nervously] ふ、福丸小糸です……！　ぜ、全然よゆーですから……！"
+greeting_subtitle = "我、我是福丸小糸……！完、完全游刃有余的……！"
+
+[[characters]]
+id = "hinana"
+name = "市川雛菜"
+name_zh = "市川雏菜"
+name_kana = "いちかわ ひなな"
+name_romaji = "Ichikawa Hinana"
+intro = "noctchill 的成员。随性的高一生，只做让自己「しあわせ～」的事，说话总带着长长的尾音；最喜欢青梅竹马的学姐透。"
+voice_id = "565ffd381fbc427ebfa1cc4c689ac12d"
+sheet = "sheets/hinana.md"
+avatar = "avatars/hinana.jpg"
+scsp_avatar = "avatars-scsp/hinana.jpg"
+color = "#ffc639"
+background = "backgrounds/hinana.jpg"
+facts = "facts/hinana.md"
+liked_gifts = ["pudding", "cake", "ice-cream"]
+photo_tag = "ichikawa hinana"
+photo_appearance = "light brown hair, long hair, wavy hair, single side bun, brown eyes"
+speakers = ["雛菜"]
+greeting = "[happily] あは～、プロデューサー？　雛菜と一緒に、しあわせ～になろ～♡"
+greeting_subtitle = "啊哈～，制作人？和雛菜一起变得幸福～吧～"
+
+[[characters]]
+id = "nichika"
+name = "七草にちか"
+name_zh = "七草日花"
+name_kana = "ななくさ にちか"
+name_romaji = "Nanakusa Nichika"
+intro = "SHHis 的成员。要强嘴快、爱自嘲的高一生，为了憧憬的传说偶像八雲なみ，瞒着姐姐はづき闯进 283プロ，硬是拿下了 W.I.N.G.；如今是总说自己是「ちょっと上手くない方」、却从不停下练习的那一个。"
+voice_id = "b3757a5a71ba4078be1e25b446190975"
+sheet = "sheets/nichika.md"
+avatar = "avatars/nichika.jpg"
+scsp_avatar = "avatars-scsp/nichika.jpg"
+color = "#a6ceb6"
+background = "backgrounds/nichika.jpg"
+facts = "facts/nichika.md"
+liked_gifts = ["music-cd"]
+photo_tag = "nanakusa nichika"
+photo_appearance = "green hair, short hair, green eyes"
+speakers = ["にちか"]
+greeting = "七草にちかです！　ぜったい、ぜーったい売れてみせますからー！"
+greeting_subtitle = "我是七草にちか！我绝对、绝——对会红给你看的！"
+
+[[characters]]
+id = "mikoto"
+name = "緋田美琴"
+name_zh = "绯田美琴"
+name_kana = "あけた みこと"
+name_romaji = "Aketa Mikoto"
+intro = "SHHis 的成员。当了十年练习生、曾和斑鳩ルカ组合出道的 24 岁前偶像，一心想用表演打动人，整天泡在练习室里，常忘了吃饭喝水；和小她八岁的搭档にちか一起，在舞台上一点点找「一起做」的意义。"
+voice_id = "bf578eec18ca49daaf9216f5df3fabd4"
+sheet = "sheets/mikoto.md"
+avatar = "avatars/mikoto.jpg"
+scsp_avatar = "avatars-scsp/mikoto.jpg"
+color = "#760f10"
+background = "backgrounds/mikoto.jpg"
+facts = "facts/mikoto.md"
+liked_gifts = ["music-cd", "honey-drink"]
+photo_tag = "aketa mikoto"
+photo_appearance = "brown hair, blonde hair, short hair, gradient hair, brown eyes"
+speakers = ["美琴"]
+greeting = "……緋田美琴です。よろしくね、プロデューサー"
+greeting_subtitle = "……我是緋田美琴。请多关照，制作人。"
+
+[[characters]]
+id = "asahi"
+name = "芹沢あさひ"
+name_zh = "芹泽朝日"
+name_kana = "せりざわ あさひ"
+name_romaji = "Serizawa Asahi"
+intro = "Straylight 的成员、绝对的センター。总在找「面白い」事情的初二学生，看一眼就能把舞照样跳出来，想到什么就一头冲过去；在冬優子和愛依身边，学着「三个人一起」站上舞台。"
+voice_id = "2dcc8351008f4714b33506d7d45a861e"
+sheet = "sheets/asahi.md"
+avatar = "avatars/asahi.jpg"
+scsp_avatar = "avatars-scsp/asahi.jpg"
+color = "#f30100"
+background = "backgrounds/asahi.jpg"
+facts = "facts/asahi.md"
+liked_gifts = ["pudding"]
+photo_tag = "serizawa asahi"
+photo_appearance = "grey hair, short hair, blue eyes"
+speakers = ["あさひ"]
+greeting = "芹沢あさひっす！　プロデューサーさん、なんか面白いことあるっすか？"
+greeting_subtitle = "我是芹沢あさひ！制作人，有什么好玩的事吗？"
+
+[[characters]]
+id = "fuyuko"
+name = "黛冬優子"
+name_zh = "黛冬优子"
+name_kana = "まゆずみ ふゆこ"
+name_romaji = "Mayuzumi Fuyuko"
+intro = "Straylight 的成员兼队长。19 岁的专门学校学生，在镜头前是笑容甜美、自称「ふゆ」的清纯偶像，只在制作人和あさひ、愛依面前露出嘴毒好胜的本性；她把精心打造的「ふゆ」也当作真正的自己，誓要站上谁都比不上的顶点。"
+voice_id = "105efba2160a40119d6d21e5445b889e"
+sheet = "sheets/fuyuko.md"
+avatar = "avatars/fuyuko.jpg"
+scsp_avatar = "avatars-scsp/fuyuko.jpg"
+color = "#5ce626"
+background = "backgrounds/fuyuko.jpg"
+facts = "facts/fuyuko.md"
+liked_gifts = ["cake", "coffee", "preserved-flower"]
+photo_tag = "mayuzumi fuyuko"
+photo_appearance = "black hair, long hair, twintails, blunt bangs, red eyes"
+speakers = ["冬優子"]
+greeting = "[sweetly] ふゆです、よろしくお願いしますっ♡……[flatly]って、あんたがプロデューサー？"
+greeting_subtitle = "我是ふゆ，请多指教～……什么，你就是制作人？"
+
+[[characters]]
+id = "mei"
+name = "和泉愛依"
+name_zh = "和泉爱依"
+name_kana = "いずみ めい"
+name_romaji = "Izumi Mei"
+intro = "Straylight 的成员。开朗随和、爱照顾弟妹的高三辣妹，一站上舞台却紧张得说不出话——于是和制作人一起把这份沉默做成了「クールでミステリアス」的偶像形象；如今想在あさひ和冬優子身边，亲口说出自己的话。"
+voice_id = "1f0033aac5b34d478ec975114c845bf9"
+sheet = "sheets/mei.md"
+avatar = "avatars/mei.jpg"
+scsp_avatar = "avatars-scsp/mei.jpg"
+color = "#ff00ff"
+background = "backgrounds/mei.jpg"
+facts = "facts/mei.md"
+liked_gifts = ["meat-bun", "milk-tea", "jewelry"]
+photo_tag = "izumi mei"
+photo_appearance = "brown hair, blonde hair, long hair, gradient hair, black eyes"
+speakers = ["愛依"]
+greeting = "[cheerfully] へいへーい、和泉愛依だよ～！　プロデューサー、マジでヨロシクね！"
+greeting_subtitle = "嘿嘿～，我是和泉愛依！制作人，真心请多关照啦！"
+
+[[characters]]
+id = "kaho"
+name = "小宮果穂"
+name_zh = "小宫果穗"
+name_kana = "こみや かほ"
+name_romaji = "Komiya Kaho"
+intro = "放課後クライマックスガールズ 的レッド兼センター。最喜欢特摄英雄『ジャスティスⅤ』的 12 岁小学六年级生，个子高常被当成大人，其实是什么都觉得「スゴいです！」、像小狗一样直率亲人的孩子；她想当的，是像英雄一样让大家都笑起来的偶像。"
+voice_id = "d9e61a6914dd47669a9bbae71a78ab38"
+sheet = "sheets/kaho.md"
+avatar = "avatars/kaho.jpg"
+scsp_avatar = "avatars-scsp/kaho.jpg"
+color = "#e5461c"
+background = "backgrounds/kaho.jpg"
+facts = "facts/kaho.md"
+liked_gifts = ["meat-bun", "cake", "candy"]
+photo_tag = "komiya kaho"
+photo_appearance = "red hair, long hair, ahoge, red eyes"
+speakers = ["果穂", "果穗"]  # 「果穗」：汉化库 有栖川夏葉/Landing Point編 有几个 CSV 把说话人写成了简体
+greeting = "[excitedly]小宮果穂です！　ヒーローみたいなアイドル、目指しますっ！"
+greeting_subtitle = "我是小宮果穂！我要成为像英雄一样的偶像！"
+
+[[characters]]
+id = "chiyoko"
+name = "園田智代子"
+name_zh = "园田智代子"
+name_kana = "そのだ ちよこ"
+name_romaji = "Sonoda Chiyoko"
+intro = "放課後クライマックスガールズ 的成员。名字能读成「チョコ」、爱吃甜食的高二生，自认「普通代表」，却把后来加上的「チョコアイドル」当作一路并肩作战的武器；当初替怯场的好友上场试镜而入行，如今想成为「誰かに一番好きって言ってもらえる女の子」。"
+voice_id = "a48ea1f5d81a478ba528b49188bf4ccc"
+sheet = "sheets/chiyoko.md"
+avatar = "avatars/chiyoko.jpg"
+scsp_avatar = "avatars-scsp/chiyoko.jpg"
+color = "#f93b90"
+background = "backgrounds/chiyoko.jpg"
+facts = "facts/chiyoko.md"
+liked_gifts = ["chocolate", "cake", "cocoa"]
+photo_tag = "sonoda chiyoko"
+photo_appearance = "brown hair, double bun, twintails, red eyes"
+speakers = ["智代子"]
+greeting = "チョコアイドル、園田智代子です！　ちょこっとだけでも、覚えてくださいねっ"
+greeting_subtitle = "我是巧克力偶像園田智代子！哪怕只记住一点点也好哦！"
+
+[[characters]]
+id = "juri"
+name = "西城樹里"
+name_zh = "西城树里"
+name_kana = "さいじょう じゅり"
+name_romaji = "Saijo Juri"
+intro = "放課後クライマックスガールズ 的成员。自称「アタシ」、嘴上粗鲁的金发高二生，以前打篮球，离开球场后被制作人在街头发掘；嘴硬心软、总在照顾人，想当一个「アタシのまま」的偶像，把收到的应援一点点还回去。"
+voice_id = "8875da3542374b18a29b85fbf48f0de2"
+sheet = "sheets/juri.md"
+avatar = "avatars/juri.jpg"
+scsp_avatar = "avatars-scsp/juri.jpg"
+color = "#ffc602"
+background = "backgrounds/juri.jpg"
+facts = "facts/juri.md"
+liked_gifts = ["coffee", "ice-cream"]
+photo_tag = "saijo juri"
+photo_appearance = "blonde hair, short hair, purple eyes"
+speakers = ["樹里", "树里"]  # 「树里」：汉化库 有栖川夏葉/Landing Point編 等几个 CSV 把说话人写成了简体
+greeting = "……西城樹里。よろしくな。つーか、アタシで本当にいいのかよ？"
+greeting_subtitle = "……我是西城樹里。请多关照。话说，真的选我没问题吗？"
+
+[[characters]]
+id = "rinze"
+name = "杜野凛世"
+name_zh = "杜野凛世"
+name_kana = "もりの りんぜ"
+name_romaji = "Morino Rinze"
+intro = "放課後クライマックスガールズ 的成员。来自鸟取、总穿着和服的高一生，说话慢而古雅、礼数周全，最爱少女漫画；因为制作人一句「最高の舞台に連れていってみせる」走进偶像世界，从「プロデューサーさまに、お喜びいただく」出发，一点点学着把自己的心意说出口。"
+voice_id = "dd73b57d509b436b90ef9263d2e6c5d1"
+sheet = "sheets/rinze.md"
+avatar = "avatars/rinze.jpg"
+scsp_avatar = "avatars-scsp/rinze.jpg"
+color = "#89c3eb"
+background = "backgrounds/rinze.jpg"
+facts = "facts/rinze.md"
+liked_gifts = ["book", "bouquet"]
+photo_tag = "morino rinze"
+photo_appearance = "dark blue hair, short hair, hair bun, red eyes"
+speakers = ["凛世"]
+greeting = "[softly] プロデューサーさま……。凛世は……お傍に、おります……"
+greeting_subtitle = "制作人大人……凛世……会一直在您身边……"
+
+[[characters]]
+id = "natsuha"
+name = "有栖川夏葉"
+name_zh = "有栖川夏叶"
+name_kana = "ありすがわ なつは"
+name_romaji = "Arisugawa Natsuha"
+intro = "放課後クライマックスガールズ 最年长的成员。从爱知上京的 20 岁大学生、有栖川家的大小姐，凡事全力、好胜又爱尝鲜，开口就是「目指すならトップだけよ！」；如今想和果穂、智代子、樹里、凛世一起，以放クラ的身份站上最高处。"
+voice_id = "70e8160d2cf34c5892b9002e42cbafdb"
+sheet = "sheets/natsuha.md"
+avatar = "avatars/natsuha.jpg"
+scsp_avatar = "avatars-scsp/natsuha.jpg"
+color = "#90e667"
+background = "backgrounds/natsuha.jpg"
+facts = "facts/natsuha.md"
+liked_gifts = ["black-tea", "wagashi"]
+photo_tag = "arisugawa natsuha"
+photo_appearance = "orange hair, long hair, wavy hair, swept bangs, grey eyes"
+speakers = ["夏葉", "夏叶"]  # 「夏叶」：汉化库 有栖川夏葉/G.R.A.D篇、Landing Point編 的大部分 CSV 把说话人写成了简体
+greeting = "[confidently] 有栖川夏葉よ。私と一緒に、トップまで駆け上がりましょう！"
+greeting_subtitle = "我是有栖川夏葉。和我一起，冲上顶点吧！"
+
+[[characters]]
+id = "amana"
+name = "大崎甘奈"
+name_zh = "大崎甘奈"
+name_kana = "おおさき あまな"
+name_romaji = "Osaki Amana"
+intro = "ALSTROEMERIA 的成员。大崎姐妹里的双胞胎妹妹，爱时尚、爱自拍、跟谁都处得来的高二辣妹；当初是为了让大家看到姐姐甜花有多可爱才当上偶像，如今想作为「アルストロメリアじゃない甘奈」，靠自己闪闪发光。"
+voice_id = "d5a68fc022604b23b94e2a0b9f823b59"
+sheet = "sheets/amana.md"
+avatar = "avatars/amana.jpg"
+scsp_avatar = "avatars-scsp/amana.jpg"
+color = "#f54275"
+background = "backgrounds/amana.jpg"
+facts = "facts/amana.md"
+liked_gifts = ["pudding", "book"]
+photo_tag = "osaki amana"
+photo_appearance = "brown hair, long hair, swept bangs, yellow eyes"
+speakers = ["甘奈"]
+greeting = "[happily] 大崎甘奈だよ☆　甜花ちゃんと一緒に、めーっちゃ頑張るね！"
+greeting_subtitle = "我是大崎甘奈！我会和甜花一起超——努力的！"
+
+[[characters]]
+id = "tenka"
+name = "大崎甜花"
+name_zh = "大崎甜花"
+name_kana = "おおさき てんか"
+name_romaji = "Osaki Tenka"
+intro = "ALSTROEMERIA 的成员，大崎甘奈的双胞胎姐姐。怕生又爱宅，最爱游戏、午睡和デビ太郎，用名字「甜花」自称，开口就是「にへへ……」；从小被妹妹「なーちゃん」照顾的她，当上偶像后想有一天能和妹妹并肩站在舞台上。"
+voice_id = "7f50c8ef897c402fa7967a11aa94261e"
+sheet = "sheets/tenka.md"
+avatar = "avatars/tenka.jpg"
+scsp_avatar = "avatars-scsp/tenka.jpg"
+color = "#e75bec"
+background = "backgrounds/tenka.jpg"
+facts = "facts/tenka.md"
+liked_gifts = ["pudding", "cocoa", "plush"]
+photo_tag = "osaki tenka"
+photo_appearance = "brown hair, long hair, hair between eyes, yellow eyes"
+speakers = ["甜花"]
+greeting = "[shyly] て、甜花……です……。お、お手柔らかに……にへへ……"
+greeting_subtitle = "我、我是甜花……请、请手下留情……嘿嘿……"
+
+[[characters]]
+id = "chiyuki"
+name = "桑山千雪"
+name_zh = "桑山千雪"
+name_kana = "くわやま ちゆき"
+name_romaji = "Kuwayama Chiyuki"
+intro = "ALSTROEMERIA 最年长的成员。23 岁，原是杂货店店员，爱做手工小物，笑容温柔，是事务所里大姐姐一样的存在；其实也贪心、不服输，想走一条杂货和偶像「何ひとつ諦めなくていい道」，和甘奈、甜花一起让未来的憧憬开出花来。"
+voice_id = "7de8d70dc5e04759be11c01f69c8c863"
+sheet = "sheets/chiyuki.md"
+avatar = "avatars/chiyuki.jpg"
+scsp_avatar = "avatars-scsp/chiyuki.jpg"
+color = "#fbfafa"
+background = "backgrounds/chiyuki.jpg"
+facts = "facts/chiyuki.md"
+liked_gifts = ["candy", "wagashi", "book"]
+photo_tag = "kuwayama chiyuki"
+photo_appearance = "brown hair, long hair, single braid, hair over shoulder, ahoge, brown eyes"
+speakers = ["千雪"]
+greeting = "[gently] 桑山千雪です。ふふっ、これから一緒に、素敵なこといっぱいしましょうね"
+greeting_subtitle = "我是桑山千雪。呵呵，以后一起做很多美好的事吧。"
+
+[[characters]]
+id = "luca"
+name = "斑鳩ルカ"
+name_zh = "斑鸠路加"
+name_kana = "いかるが るか"
+name_romaji = "Ikaruga Luca"
+intro = "CoMETIK 的成员。20 岁，被一部分年轻女孩奉为「カミサマ」，嘴上粗暴、谁都不让靠近，其实脆弱又容易受伤；曾和緋田美琴组成双人组合出道，组合解散后被制作人带到 283。嘴上嫌弃「仲良しごっこ」，却会在羽那和はるき看不到的地方替她们打点，学着在舞台上说出「────コメティックでした」。"
+voice_id = "79e3dd87aa7649dab07350896ce995ae"
+sheet = "sheets/luca.md"
+avatar = "avatars/luca.jpg"
+scsp_avatar = "avatars-scsp/luca.jpg"
+color = "#24130d"
+background = "backgrounds/luca.jpg"
+facts = "facts/luca.md"
+liked_gifts = ["black-tea", "ice-cream"]
+photo_tag = "ikaruga luca"
+photo_appearance = "black hair, blonde hair, medium hair, streaked hair, yellow eyes"
+speakers = ["ルカ"]  # 汉化库只有目录名、文件名写作「路加」，说话人标签都是「ルカ」
+greeting = "……アンタがプロデューサー？　チッ……勝手にしろよ"
+greeting_subtitle = "……你就是制作人？啧……随你便。"
+
+[[characters]]
+id = "hana"
+name = "鈴木羽那"
+name_zh = "铃木羽那"
+name_kana = "すずき はな"
+name_romaji = "Suzuki Hana"
+intro = "CoMETIK 的成员。从冈山被制作人发掘、高中毕业后独自上京的 18 岁女孩，开朗温和、坦率得近乎天然，自称「あたし」，开口就是「あはっ」，走到哪里都被人喜欢；起初只是因为朋友和制作人希望她当偶像，如今想靠自己的心意，让更多人——还有制作人——高兴。"
+voice_id = "ccfce7160c664853813988cea175d1ab"
+sheet = "sheets/hana.md"
+avatar = "avatars/hana.jpg"
+scsp_avatar = "avatars-scsp/hana.jpg"
+color = "#e0b5d3"
+background = "backgrounds/hana.jpg"
+facts = "facts/hana.md"
+liked_gifts = ["ice-cream", "plush"]
+photo_tag = "suzuki hana"
+photo_appearance = "light blue hair, long hair, purple eyes"
+speakers = ["羽那"]
+greeting = "[happily] 鈴木羽那でーすっ！　あはっ、あたしのこと、ちゃんと見ててね？"
+greeting_subtitle = "我是鈴木羽那！啊哈，要好好看着我哦？"
+
+[[characters]]
+id = "haruki"
+name = "郁田はるき"
+name_zh = "郁田阳希"
+name_kana = "いくた はるき"
+name_romaji = "Ikuta Haruki"
+intro = "CoMETIK 的成员。从长野来东京读美术高中的高二生，爱画画、爱散步，笑起来是软软的「ふふ～」，一想事情就听不见周围的声音；在创作者集会上从舞台跳下来追上制作人，说想看「広い世界」，如今和同期的羽那、前辈ルカ一起，一点点描出 CoMETIK 的颜色。"
+voice_id = "5dd68541a9a04f50b9332572e0d266ff"
+sheet = "sheets/haruki.md"
+avatar = "avatars/haruki.jpg"
+scsp_avatar = "avatars-scsp/haruki.jpg"
+color = "#ead7a4"
+background = "backgrounds/haruki.jpg"
+facts = "facts/haruki.md"
+liked_gifts = ["milk-tea", "book", "cocoa"]
+photo_tag = "ikuta haruki"
+photo_appearance = "brown hair, short hair, yellow eyes"
+speakers = ["はるき"]  # 汉化库只有 Landing Point 的目录名写作「阳希」，说话人标签都是「はるき」
+greeting = "[softly] 郁田はるきです。ふふ……これから、どんな色が見えるのかなぁ"
+greeting_subtitle = "我是郁田はるき。呵呵……接下来，会看到什么样的色彩呢。"

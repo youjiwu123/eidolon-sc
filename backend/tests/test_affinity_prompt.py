@@ -41,8 +41,9 @@ TIER_MARKS = {
     "distant": "有点生气或失望",
     "close": "更放松",
     "intimate": "非常信赖",
+    "love": "不只是偶像和制作人了",
 }
-FONDNESS = {"close": "偶尔可以轻轻带一句", "intimate": "可以明着撒娇"}
+FONDNESS = {"close": "偶尔可以轻轻带一句", "intimate": "可以明着撒娇", "love": "像对恋人那样说话"}
 """How sweet on the producer she may be, close or intimate, in her replies and reach-outs."""
 SWEET_WITHIN_BOUNDS = "不要拿什么要挟"
 LAST_TALKED = "上次和制作人说话是"
@@ -119,7 +120,7 @@ async def test_each_tier_but_trust_has_her_speak_as_its_own_in_her_own_way(
     make_client: ClientFactory, settings: Settings
 ):
     """Close, she may now and then be a little sweet on the producer; intimate, openly."""
-    for kept, tier in [(10, "cold"), (39.9, "distant"), (65, "close"), (100, "intimate")]:
+    for kept, tier in [(10, "cold"), (39.9, "distant"), (65, "close"), (90, "intimate"), (110, "love")]:
         llm, _ = await prompted(make_client, [level(2)], kept=kept, settings=settings)
 
         section = about_now(llm)

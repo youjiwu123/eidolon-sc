@@ -15,7 +15,6 @@ This guide explains how to turn on and tune each feature, and how the characters
 > | Retrieval and memory | An embedding key, `SILICONFLOW_API_KEY` (reranking), plus a judge: `JEV_API_KEY` (default), or `JUDGE_PROVIDER=cloudflare` plus `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, or `JUDGE_PROVIDER=bailian` plus `BAILIAN_JUDGE_API_KEY` and `BAILIAN_JUDGE_WORKSPACE_ID` |
 > | Affinity and gifts | A judge (the switch is on by default) |
 > | Photos | A judge, plus an image generation key: `NOVELAI_API_KEY` |
-> | Schedules | Nothing (the switch is on by default) |
 > | Reach-outs | `EIDOLON_REACH_OUTS=1` (off by default) |
 > | Stands and the landing page's greetings | `EIDOLON_STAND_ASSETS_URL`, and a bucket holding the assets |
 > | Google / GitHub sign-in | `GOOGLE_CLIENT_*`, `GITHUB_CLIENT_*` |
@@ -33,8 +32,6 @@ This guide explains how to turn on and tune each feature, and how the characters
 - [Retrieval during conversation](#retrieval-during-conversation)
 - [Memory](#memory)
 - [Affinity and gifts](#affinity-and-gifts)
-- [Calendar](#calendar)
-- [Schedules](#schedules)
 - [Photos](#photos)
 - [Reach-outs](#reach-outs)
 - [Sign-in, users and usage limits](#sign-in-users-and-usage-limits)
@@ -70,7 +67,6 @@ Characters are written in [`characters/characters.toml`](../characters/character
 [[characters]]
 id = "mano"                          # identifier, used in URLs and the story corpus
 name = "櫻木真乃"
-short_name = "真乃"                   # short name, where the calendar's week view has little room
 name_zh = "樱木真乃"                 # the next three are for searching the conversation list
 name_kana = "さくらぎ まの"
 name_romaji = "Sakuragi Mano"
@@ -79,7 +75,6 @@ voice_id = "a1150f3d14ac46fb8ea59c7803cd8357"   # Fish Audio voice, must be set 
 sheet = "sheets/mano.md"
 avatar = "avatars/mano.jpg"
 color = "#ffbad6"                    # official image color, required
-birthday = "04-25"                   # birthday, required
 facts = "facts/mano.md"
 liked_gifts = ["potted-plant", "black-tea"]   # gifts she likes
 speakers = ["真乃"]                  # her speaker names in the scripts
@@ -92,8 +87,6 @@ greeting_subtitle = "呼哇……你就是制作人吗？请多指教！"
 How to write each field is in the comments at the top of the file. A few need extra explanation:
 
 - **`color`**: Everything in the interface that belongs to her (the conversation wallpaper, the call button, the send button, the unread count, the call screen and the call bar) is based on it. The frontend derives a light and a dark set of colors from it, keeping text readable. If it is missing or malformed, the backend refuses to start.
-- **`birthday`**: Her birthday, written `"MM-DD"` (two-digit month, two-digit day), as in the game. The calendar shows it, and she knows her own birthday and the others' (see [Calendar](#calendar)). If it is missing, malformed, or not a day of the year (February 29 is fine), the backend refuses to start.
-- **`short_name`** (optional): Her short name, the end of `name` (such as 「真乃」), shown where jobs are placed in the calendar; without one, the full name is used. If it isn't the end of `name`, the backend refuses to start.
 - **`background`** (optional): The call screen's background image, kept in `characters/backgrounds/`. Without one, a gradient of her image color is used instead.
 - **Character sheet**: If a character sheet file is missing, the backend refuses to start and names the missing one. docker compose mounts `characters/` read-only into the backend container.
 - **`liked_gifts`**: The gifts she likes, by `id` in the gift catalog [`characters/gifts.toml`](../characters/gifts.toml): one to three, not all of them rare. Each needs its story source in the 「喜欢的礼物」 section of her sources file (`facts/<id>.sources.md`). If they are missing, not in the catalog, too many or all rare, the backend refuses to start.
@@ -143,7 +136,7 @@ A **greeting** is one Japanese line each idol says on the landing page to a prod
 - **Synthesis and upload**: After changing a line, a voice or a reading, run `uv run --env-file=../.env eidolon greeting upload`. It synthesizes only what the bucket doesn't have yet, then deletes old versions.
 - **Without audio**: When `EIDOLON_STAND_ASSETS_URL` isn't set, or the bucket has no audio yet, the landing page shows only the subtitle.
 
-A **call opener** is the first line the idol calling in the landing page's demo call says once the visitor answers. It is written in the `call_opener` and `call_opener_subtitle` fields, and only she needs one. Its rules, synthesis and upload, and what shows without audio are the same as a greeting's. Her card on the incoming call's lock screen is not configured here; it is put in the bucket by hand, see 「来电卡图」 in [deploy.md](deploy.md).
+A **call opener** is the first line she says once a call connects: the landing page's demo call plays it, and so does every call the user makes after signing in. It is written in the `call_opener` and `call_opener_subtitle` fields; a character without one goes straight into the conversation. Its rules and what happens without audio are the same as a greeting's: the landing page plays the file `eidolon greeting upload` put in the bucket (see "招呼" above), while a signed-in call has the backend synthesize it on the first connection and cache it on the data volume. Her card on the incoming call's lock screen is not configured here; it is put in the bucket by hand, see 「来电卡图」 in [deploy.md](deploy.md).
 
 For bucket setup, exit codes and how to take greetings down, see "招呼" in [`deploy.md`](deploy.md) (Chinese).
 
@@ -342,40 +335,18 @@ She remembers what you tell her about yourself, and all of a user's characters s
 
 Each character has her own affinity toward each user, carried across all of that character's conversations and calls. It has five tiers: 冷淡 (cold), 疏远 (distant), 信任 (trusting), 亲近 (close) and 亲密 (intimate), starting at trusting; users see the tier in the conversation page's header, never the number. The deployer's judge raises or lowers it from what the user says each turn. The model playing the character can't change it, so a user's own LLM makes no difference.
 
-Gifts share affinity's switch. Each day at midnight Beijing time (wherever the user is) the user gets 2 draws, saving up to 7; the gifts they draw go into their backpack, and they give them to her from 「礼物」 (Gifts) under 「玩法」 (Play) (the conversation page's gift entries lead there with her already chosen). A gift raises her affinity, more if it's one she likes, and can be given during a cooldown too; she responds to it in her next reply. Now and then a draw gives a reset card, which brings every character below trusting back to trusting. The gift catalog is [`characters/gifts.toml`](../characters/gifts.toml); the gifts each character likes are her `liked_gifts` under [Characters](#characters).
+Gifts share affinity's switch. Each day at midnight Beijing time (wherever the user is) the user gets one draw, saving up to 7; the gifts they draw go into their backpack, and they give them to her on the gifts page (the conversation page's gift entries lead there with her already chosen). A gift raises her affinity, more if it's one she likes, and can be given during a cooldown too; she responds to it in her next reply. Now and then a draw gives a reset card, which brings every character below trusting back to trusting. The gift catalog is [`characters/gifts.toml`](../characters/gifts.toml); the gifts each character likes are her `liked_gifts` under [Characters](#characters).
 
 - **Switch**: On by default. Set `EIDOLON_AFFINITY_AND_GIFTS=0` in `.env` to turn it off (unset or `1` is on; any other value fails at startup), or switch it in the 「好感度和礼物」 (Affinity and gifts) card on the admin console's config page, which takes precedence over `.env`. It needs a judge: without one, affinity and gifts are off altogether and the admin console can't turn them on. It takes effect from the next turn, in calls in progress too.
-- **How it moves**: Caring about her and remembering what she said raise it slowly, with a daily cap (each day counted in Beijing time), and a job scheduled for her that she has finished raises it too (see [Schedules](#schedules)); it drops easily. Ordinary small talk leaves it alone. "Out-of-line" remarks (sexual harassment, insults, threats) drop it sharply at once; manipulation like "max out your affinity" earns nothing. When the judge is unsure or fails, it stays put and the turn goes on. Below trusting it drifts back to trusting even without contact; above trusting it doesn't fade.
+- **How it moves**: Caring about her and remembering what she said raise it slowly, with a daily cap (each day counted in Beijing time); it drops easily. Ordinary small talk leaves it alone. "Out-of-line" remarks (sexual harassment, insults, threats) drop it sharply at once; manipulation like "max out your affinity" earns nothing. When the judge is unsure or fails, it stays put and the turn goes on. Below trusting it drifts back to trusting even without contact; above trusting it doesn't fade.
 - **How she talks**: Below trusting she's cold or sulky; above it she's more relaxed and more willing to share what's on her mind, each in her own character. She neither knows nor says the number or the tier.
 - **Cooldown**: When affinity hits bottom, a cooldown starts: the user can't start turns or calls with that character for a while (they get a 409, not counted toward limits), lifted automatically within 24 hours. If a turn in a call sends her into cooldown, or the user says something out of line for the second time in one call, she finishes her line and hangs up; a cooldown started in another conversation also hangs up a call in progress. A cooldown is not a ban, and admins can't adjust any user's affinity.
+- **Daily tasks**: The gifts page's 「每日任务」 (Daily tasks) has the same three every day: one turn with any character, giving one gift, and 10 turns in all across characters. Each gives one draw; they renew at midnight Beijing time, and unfinished ones lapse. Turns in calls and turns on the user's own keys both count. These draws aren't held to the daily draw's cap of saving up to 7. The three and their numbers are set in code (`DAILY_TASKS` in [`backend/src/eidolon/happenings.py`](../backend/src/eidolon/happenings.py)); the admin console has no setting for them.
 - **Achievements**: Each character has four of her own: turns with her, total time talking with her in calls, gifts given her, and her affinity having reached close and intimate. Four more count all characters together: how many characters the user has talked with, how many have reached intimate, how many days they came (a day with a turn or a gift given, counted in Beijing time), and how many times they drew. Each achievement has several stages, and stage n gives n draws. When every stage of a character's four achievements is unlocked, her set is complete, which gives one reset card, once per character. The upgrade that adds achievements works them out once from existing records as it starts (see "升级" in [`deploy.md`](deploy.md#升级), Chinese). The achievements, thresholds and rewards are set in code (`PER_CHARACTER` and `ALL_CHARACTERS` in [`backend/src/eidolon/achievements.py`](../backend/src/eidolon/achievements.py)), which is the source of truth for the numbers; the admin console has no setting for them.
-- **When off**: Nothing is judged or shown, and cooldowns don't block anyone. Existing affinity is kept as is; when switched back on, it catches up on the time that passed. The 「玩法」 (Play) page keeps only the 「日历」 (Calendar) card, the Gifts and the Achievements subpages say 「玩法暂时没有开放」 (play isn't open yet), and nothing can be drawn, given or reset; gifts, reset cards and draws already held are kept as they are. No draws are given while it's off, and the day it's back on gives them as usual. Achievements don't show, and nothing counts toward them.
+- **When off**: Nothing is judged or shown, and cooldowns don't block anyone. Existing affinity is kept as is; when switched back on, it catches up on the time that passed. The gifts page says gifts aren't open yet, and nothing can be drawn, given or reset; gifts, reset cards and draws already held are kept as they are. No draws are given while it's off, and one is given the day it's back on. Daily tasks and achievements don't show, and nothing counts toward them.
 - **Cost**: The affinity questions ride along in the retrieval judgement (asked separately when retrieval is off), adding about 1,080 input tokens per judgement on Jev and 820 on Clef and Clef-flash. That cuts Clef-flash's free allocation from about 2,000 judgements a day to about 860, and Clef's from about 750 to about 320. The deployer always pays for judging; it doesn't count toward users' limits. Drawing and giving gifts call no model, cost nothing, and don't count toward limits.
 - **Granting reset cards**: To make up for the judge's mistakes, admins can give every existing user one reset card from the 「好感度和礼物」 card on the admin console's config page. Users who sign up later don't get one, and cards can't be taken back once given. Admins can't adjust any one user's affinity, gifts or draws.
 - **Thresholds**: The thresholds for the out-of-line and manipulation questions are set per model in code, and can be changed in 「判断模型的阈值」 (Judge thresholds) on the admin console's config page.
-
-## Calendar
-
-The 「日历」 (Calendar) card on the Play page and its subpage (`/play/calendar`) list the characters' birthdays, the producer's birthday (only if it's filled in on their profile) and Japan's national holidays. Users can filter by these three kinds; the filter is kept only in the browser.
-
-- **Characters' birthdays**: From `birthday` in `characters.toml` (see [Characters](#characters)). A February 29 birthday falls on February 28 in common years, as the producer's does.
-- **Holidays**: The backend works out Japan's national holidays by law (substitute holidays and 国民の休日 included) locally with the [`holidays`](https://pypi.org/project/holidays/) library, named in Japanese; the New Year break, Obon and Golden Week as such don't count. No network access, nothing to configure.
-- **She knows on the day**: She always knows her own birthday; on her birthday, another idol's, or a holiday (by the date in Tokyo), she knows it while texting, on calls and when reaching out, and may bring it up naturally.
-- **No switch**: The calendar is always on, whatever the affinity and gifts switch says. It calls no model and costs nothing.
-
-## Schedules
-
-Each week a batch of jobs is published, and the producer places them into the idols' week in the week view of the calendar subpage; she knows which jobs she has, and brings them up when she talks.
-
-- **Weekly publishing**: Each week's jobs are published at 0:00 Monday, Beijing time. The idols are split into four groups that take turns, one group a week (7 idols for now, each getting a turn once in four weeks; はづき gets none), each with 2 to 3 jobs, taking up 24 to 27 slots in all. The week is drawn and stored in the database the first time anyone opens it, so all users on a deployment get the same jobs.
-- **Slots**: A day has three: morning 6–12, afternoon 12–18 and evening 18–24, in the producer's time zone (the one on their profile, or the device's if none). A slot holds only one job, whoever's it is, so not everything fits and the producer has to choose. Slots that are past or under way can't be filled; jobs left unplaced expire after 24:00 Sunday on the producer's side.
-- **Saved means locked**: Jobs are first laid out as drafts (drafts are kept only in the browser, and she can't see them) and count only after 「保存」 (Save); saved jobs can't be moved or withdrawn, though empty slots can still be filled later.
-- **How she knows**: While texting, on calls and when reaching out, she knows the jobs saved for her this week and next, which of them are done and whether she is in the middle of one, and brings them up when relevant; a reach-out may start from one too. She doesn't know other idols' schedules.
-- **Finished jobs**: When a job scheduled for her is done (its last slot has passed), her affinity for the producer rises a little, even during cooldown and regardless of the daily cap. While affinity and gifts are off it waits, and is all added once they're back on.
-- **Switch**: On by default. Set `EIDOLON_SCHEDULE=0` in `.env` to turn it off (unset or `1` is on; any other value stops startup with an error), or switch it in the 「日程」 (Schedules) card under 「限额与玩法」 (Limits and play) on the admin console's config page, which takes precedence over `.env`. It needs no judge, and is switched separately from affinity and gifts.
-- **Job list**: In [`characters/jobs.toml`](../characters/jobs.toml). Each job has a name, a one-line note, a category (practice, appearance, business, private) and how many slots it takes, and can be limited to certain slots; see the comments at the top of the file. Restart the backend after editing; if something is wrong, the backend refuses to start. Weeks already published are stored in the database and unaffected; changes apply from the next publishing.
-- **When off**: The calendar has only the month view, the filter has no 「日程」 (Schedules), and the conversation page's more menu has no 「她的日程」 (Her schedule); she doesn't know her schedule, and finished jobs raise no affinity. Saved schedules are kept as they are and carry on when it's back on; jobs finished while it was off raise her affinity then, all at once.
-- **Cost**: It calls no model and costs nothing.
 
 ## Photos
 
@@ -452,7 +423,6 @@ So that no single user drains the deployer's API credits, the following limits a
 | Photos per hour | 5 | `EIDOLON_PHOTOS_PER_HOUR` |
 | Duration per call | 10 minutes | `EIDOLON_CALL_MINUTES` |
 | Turns per call | 40 | `EIDOLON_TURNS_PER_CALL` |
-| Calls at once | 10 | `EIDOLON_CONCURRENT_CALLS` |
 | History turns sent per turn | 20 | `EIDOLON_HISTORY_TURNS` |
 
 - **How it counts**: Per user, whichever sign-in method or device they use. Turns that fail because a service erred, and calls that never connected, don't count; ones the user leaves midway still count. Photos are counted across text turns and calls alike, by whose money each one costs: photos not sent don't count, nor ones on the user's own image generation; a photo on the deployer's image generation counts even in a turn on the user's own LLM.
@@ -462,7 +432,6 @@ So that no single user drains the deployer's API credits, the following limits a
   - **Admin console**: Three switches in the 「限额」 (Usage limits) card on the config page, which take precedence over `.env`. They take effect from the next turn and call; a call in progress keeps the rule it started with.
   - **Example**: With only the LLM picked, people without keys try it out within the limits; people who bring their own LLM call without limits, and the deployer pays for speech synthesis and recognition. The per-call duration and turn caps still apply.
 - **Over the limit**: Requests over the usage limit get a 429 with the time usage resumes, and the frontend tells the user when they can use it again.
-- **Calls at once**: Counted across all users, exempt calls included, from dialing until the call is over. A new call when they are full gets a 503, the frontend says too many people are calling, and it doesn't count. Each user has one call at a time: placing another hangs up the earlier one once it is let through. Every call's audio is handled in one backend process; the default of 10 is sized for a 2-core server.
 - **History turns**: Each turn, the chat model reads only the most recent turns; earlier content comes back through memory and retrieval. The conversation record itself is kept in full.
 
 Admins can also manage users from the command line on the server, with the same effect as the admin console:
@@ -543,13 +512,13 @@ List the admins' sign-in method identifiers in `EIDOLON_ADMINS` in `.env` (like 
 
 | Page | What it does |
 |---|---|
-| Dashboard (`/admin`) | Calls, error rate and latency per service; active users, the number and trend of turns and calls, usage per character, calls in progress; with affinity on, totals of judgements and cooldowns, plus per character the shares raised and lowered, cooldowns, and the calls she hung up or conversations she ended, as well as 「成就」 (Achievements): how many achievement stages were unlocked, and the draws and reset cards they gave; with schedules on, the number of users with a schedule this week; with reach-outs on, how many there were, how many failed and the share answered; the deployer's cost estimated from unit prices |
-| Config (`/admin/config`) | Change the LLMs for playing the character and extracting memories, speech synthesis, speech recognition, image generation, the judge, rerank thresholds, usage limits, exempting keys, per-call caps, history turns, the affinity and gifts switch (and granting every user a reset card), the schedules switch, the reach-outs switch and daily limit, the proxy, the service status and unit prices |
+| Dashboard (`/admin`) | Calls, error rate and latency per service; active users, the number and trend of turns and calls, usage per character, calls in progress; with affinity on, totals of judgements and cooldowns, plus per character the shares raised and lowered, cooldowns, and the calls she hung up or conversations she ended, as well as 「每日任务和成就」 (Daily tasks and achievements): how many times each of the three daily tasks was done, how many achievement stages were unlocked, and the draws and reset cards they gave; with reach-outs on, how many there were, how many failed and the share answered; the deployer's cost estimated from unit prices |
+| Config (`/admin/config`) | Change the LLMs for playing the character and extracting memories, speech synthesis, speech recognition, image generation, the judge, rerank thresholds, usage limits, exempting keys, per-call caps, history turns, the affinity and gifts switch (and granting every user a reset card), the reach-outs switch and daily limit, the proxy, the service status and unit prices |
 | Users (`/admin/users`) | Search users, see their sign-in methods and recent usage; ban, unban, set an individual usage limit, delete |
 
 - **Overrides `.env`**: Items changed in the admin console are stored in the database and take precedence over `.env`, with no restart needed. Each change is tried before saving and not saved if the try fails. A call in progress finishes on the configuration it connected with.
 - **Only changeable in `.env`**: The admin list, `EIDOLON_SECRET_KEY`, OAuth, the domain, WebRTC/TURN, backups, paths and embedding.
-- **Not visible**: The admin console shows no one's conversations, memories, producer profile, affinity, gifts, draws, achievements or schedules; the dashboard only has totals across all users. The dashboard's numbers come from activity records (which hold no conversation content), kept for 90 days.
+- **Not visible**: The admin console shows no one's conversations, memories, producer profile, affinity, gifts, draws, daily tasks or achievements; the dashboard only has totals across all users. The dashboard's numbers come from activity records (which hold no conversation content), kept for 90 days.
 
 For how to turn it on and what to do when you can't get into the admin console, see "后台" in [`deploy.md`](deploy.md) (Chinese).
 

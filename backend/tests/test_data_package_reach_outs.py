@@ -42,7 +42,7 @@ async def test_her_reach_outs_move_to_another_deployment_as_they_were_and_seen(
     here, _, clock, conversation = await talked(
         make_client, REACH_OUT, random=FakeRandom(MIDDLE)
     )
-    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=28))
+    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=18))
     await backend_of(here).reach_outs.run_due()
     assert await unseen(here) == {"mano": True}
     there = make_client(

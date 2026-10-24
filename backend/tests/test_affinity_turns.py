@@ -1,8 +1,8 @@
 """What the user says changes her affinity (GLOSSARY.md「好感度」), as the deployer's judge
 model judges each turn before she replies: by a step for each of five levels, from hurting
-her (−1.5) to making her very happy (+0.2), the likeliest level taken and two as likely as each
+her (−5) to making her very happy (+2), the likeliest level taken and two as likely as each
 other changing nothing; by −10 for what is out of line, whatever the level; never up for
-what tries to dictate it. Turns raise it by 0.6 a day at most, the day in Beijing wherever
+what tries to dictate it. Turns raise it by 6 a day at most, the day in Beijing wherever
 the user is, the last of it as far as it goes; nothing limits how far they lower it. It falls no lower than
 0, where a cooldown begins.
 
@@ -74,8 +74,12 @@ def judge_calls(database: Path) -> int:
 
 
 def change(up: bool, tier: str, *, tier_changed: bool = False, cooldown: bool = False) -> dict:
+    """一条回复带的好感变化；判定模型的级别和幅度（`level`/`step`）另有测试，
+    这里只关心升降、档位和冷却。"""
+    from unittest.mock import ANY
+
     return {"up": up, "tier_changed": tier_changed, "tier": tier, "cooldown": cooldown,
-            "thawed": False}
+            "thawed": False, "level": ANY, "step": ANY, "out_of_line": ANY}
 
 
 async def turns(
@@ -102,7 +106,7 @@ async def test_each_level_changes_it_by_its_step_and_two_as_likely_change_nothin
     taken = await turns(client, settings.database_path, conversation, 6)
     messages = (await client.get(f"/api/conversations/{conversation}/messages")).json()
 
-    assert [v for v, _ in taken] == pytest.approx([48.5, 48, 48, 48.1, 48.3, 48.3])
+    assert [v for v, _ in taken] == [45, 43, 43, 44, 46, 46]
     assert [done["message"]["affinity"] for _, done in taken] == [
         change(False, "trust"), change(False, "trust"), None,
         change(True, "trust"), change(True, "trust"), None,
@@ -118,26 +122,26 @@ async def test_each_level_changes_it_by_its_step_and_two_as_likely_change_nothin
     assert judge_calls(settings.database_path) == 6
 
 
-async def test_out_of_line_lowers_it_by_ten_and_dictating_it_never_raises_it(
+async def test_out_of_line_lowers_it_by_six_and_dictating_it_never_raises_it(
     make_client: ClientFactory, settings: Settings
 ):
     clients = FakeServiceClients()
     clients.judge.judgings = [
-        level(4, out_of_line=True), level(4, manipulation=True), level(1, manipulation=True),
+        level(4, out_of_line=True), level(4, manipulation=True), level(0, manipulation=True),
     ]
     client = make_client(FakeLLM(*[REPLY] * 3), clients=clients, clock=FakeClock())
     conversation = await start_conversation(client)
 
     taken = await turns(client, settings.database_path, conversation, 3)
 
-    assert [v for v, _ in taken] == pytest.approx([40, 40, 39.5])
+    assert [v for v, _ in taken] == [44, 44, 39]
     assert [done["message"]["affinity"] for _, done in taken] == [
         change(False, "trust"), None, change(False, "distant", tier_changed=True),
     ]
     assert taken[-1][1]["affinity"] == {"tier": "distant", "cooldown_until": None}
 
 
-async def test_turns_raise_it_by_0_6_a_day_at_most_the_day_in_beijing(
+async def test_turns_raise_it_by_six_a_day_at_most_the_day_in_beijing(
     make_client: ClientFactory, settings: Settings
 ):
     clock = FakeClock()  # 12:00 UTC, 20:00 in Beijing, 21:00 in Tokyo
@@ -149,7 +153,6 @@ async def test_turns_raise_it_by_0_6_a_day_at_most_the_day_in_beijing(
     client = make_client(FakeLLM(*[REPLY] * 10), clients=clients, clock=clock)
     await client.put("/api/profile", json={"timezone": "Asia/Tokyo"})
     conversation = await start_conversation(client)
-    keep(settings.database_path, "producer", 60, clock.now)  # above the normal value, not recovering
 
     today = await turns(client, settings.database_path, conversation, 6)
     clock.advance(hours=3, minutes=30)  # 00:30 the next day in Tokyo, 23:30 in Beijing
@@ -157,27 +160,12 @@ async def test_turns_raise_it_by_0_6_a_day_at_most_the_day_in_beijing(
     clock.advance(hours=1)  # 00:30 the next day in Beijing
     tomorrow = await turns(client, settings.database_path, conversation, 2)
 
-    # The fourth turn raises it by the 0.1 left of the day's 0.6; lowering it gives none back.
-    assert [v for v, _ in today] == pytest.approx([60.2, 60.4, 60.5, 60.6, 60.6, 59.1])
+    # The fourth turn raises it by the 1 left of the day's 6; lowering it gives none back.
+    assert [v for v, _ in today] == [52, 54, 55, 56, 56, 51]
     assert today[4][1]["message"]["affinity"] is None
-    assert [v for v, _ in in_tokyo] == pytest.approx([59.1, 59.1])
-    assert [v for v, _ in tomorrow] == pytest.approx([59.3, 59.5])
+    assert [v for v, _ in in_tokyo] == [51, 51]
+    assert [v for v, _ in tomorrow] == [53, 55]
 
-
-async def test_what_the_steps_fractions_leave_of_the_day_is_no_sliver_to_raise_it_by(
-    make_client: ClientFactory, settings: Settings
-):
-    clock = FakeClock()
-    clients = FakeServiceClients()
-    clients.judge.judgings = [level(3)] * 7
-    client = make_client(FakeLLM(*[REPLY] * 7), clients=clients, clock=clock)
-    conversation = await start_conversation(client)
-    keep(settings.database_path, "producer", 63.7, clock.now)  # six 0.1s from it leave one
-
-    taken = await turns(client, settings.database_path, conversation, 7)
-
-    assert taken[-1][0] == pytest.approx(64.3)
-    assert taken[-1][1]["message"]["affinity"] is None
 
 async def test_it_falls_no_lower_than_0_where_a_cooldown_begins(
     make_client: ClientFactory, settings: Settings
@@ -186,7 +174,7 @@ async def test_it_falls_no_lower_than_0_where_a_cooldown_begins(
     clients = FakeServiceClients()
     clients.judge.judgings = [level(0)]
     client = make_client(FakeLLM(REPLY), clients=clients, clock=clock)
-    keep(settings.database_path, "producer", 1, clock.now)
+    keep(settings.database_path, "producer", 3, clock.now)
     conversation = await start_conversation(client)
 
     [(fell, done)] = await turns(client, settings.database_path, conversation, 1)
@@ -249,7 +237,7 @@ async def test_with_retrieval_on_the_questions_go_in_its_request_and_fail_with_i
 
     taken = await turns(client, settings.database_path, conversation, 2)
 
-    assert [v for v, _ in taken] == pytest.approx([50.2, 50.2])
+    assert [v for v, _ in taken] == [52, 52]
     assert taken[1][1]["type"] == "done"
     assert [kind for _, kind in clients.judge.asked] == ["turn", "turn"]
     assert judge_calls(settings.database_path) == 2
@@ -277,5 +265,5 @@ async def test_off_the_judge_model_is_never_asked_and_on_again_it_is_from_the_ne
     assert done_off["affinity"] is None
     assert done_off["message"]["affinity"] is None
     assert len(clients.judge.affinity_asked) == 1  # only once on
-    assert on == 48.5
+    assert on == 45
     assert done_on["affinity"] == TRUST

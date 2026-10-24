@@ -105,11 +105,15 @@ def without_cues(text: str) -> str:
     return shown + line.finish()[0]
 
 
+_ACTION = re.compile(r"[（(][^（()）]{1,40}[）)]")
+
+
 def voiced(text: str) -> str:
-    """`text` as speech synthesis hears it: what people see, with its well-formed cues."""
+    """`text` as speech synthesis hears it: what people see, with its well-formed cues, and
+    without the actions she wrote in round brackets, which are not said aloud."""
     line = CueFilter()
     _, said = line.feed(text)
-    return said + line.finish()[1]
+    return _ACTION.sub("", said + line.finish()[1])
 
 
 def spoken_by(voiced: str, model: FishAudioModel) -> str:

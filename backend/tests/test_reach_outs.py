@@ -2,7 +2,7 @@
 user, the user not talking to her. The deployer turns them on; then, at every tick, each
 current conversation the user has had a turn in, last in touch with her within a week, has
 one once its time comes: the last contact (her last turn recorded, or a call that connected
-ending) and a time drawn from her tier's range, intimate 3–6 hours, close 8–16, trust 20–36
+ending) and a time drawn from her tier's range, intimate 2–4 hours, close 5–10, trust 12–24
 (trust where affinity is off); none in cold or distant, a cooldown, a conversation she has
 ended, or after one since the last contact. Generated on the deployer's chat model as text
 turns use it, whoever's LLM the user brings, laid out as a text turn's prompt is; recorded in
@@ -140,7 +140,7 @@ async def test_once_her_time_comes_she_says_something_first_the_lists_last_line_
     client, _, clock, conversation = await talked(
         make_client, REACH_OUT, REPLY, random=FakeRandom(MIDDLE)
     )
-    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=28))
+    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=18))
 
     await backend_of(client).reach_outs.run_due()
 
@@ -179,11 +179,11 @@ async def test_the_closer_she_is_the_sooner_she_comes(
         make_client, REACH_OUT,
         settings=replace(settings, judge=FAKE_JUDGE), random=FakeRandom(MIDDLE),
     )
-    keep(settings.database_path, "producer", 90, clock.now)  # intimate: 3–6 hours, halfway
+    keep(settings.database_path, "producer", 90, clock.now)  # intimate: 2–4 hours, halfway
     last_contact(settings.database_path, conversation, clock.now)
     reach_out = backend_of(client).reach_outs
 
-    clock.advance(hours=4, minutes=29)
+    clock.advance(hours=2, minutes=59)
     await reach_out.run_due()
     before = reach_outs(await record(client, conversation))
     clock.advance(minutes=1)
@@ -202,10 +202,9 @@ async def test_where_affinity_is_off_she_comes_as_in_trust(
         random=FakeRandom(0),
     )
     keep(settings.database_path, "producer", 90, clock.now)  # kept, but off
-    last_contact(settings.database_path, conversation, clock.now)
+    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=11, minutes=59))
     reach_out = backend_of(client).reach_outs
 
-    clock.advance(hours=19, minutes=59)
     await reach_out.run_due()
     before = reach_outs(await record(client, conversation))
     clock.advance(minutes=1)
@@ -241,7 +240,7 @@ async def test_she_waits_for_the_user_to_answer_before_she_comes_again(
         random=FakeRandom(0, 0, 0),
     )
     database = settings.database_path
-    last_contact(database, conversation, clock.now - timedelta(hours=20))
+    last_contact(database, conversation, clock.now - timedelta(hours=12))
     reach_out = backend_of(client).reach_outs
     await reach_out.run_due()
 
@@ -251,7 +250,7 @@ async def test_she_waits_for_the_user_to_answer_before_she_comes_again(
     unanswered = len(reach_outs(await record(client, conversation)))
 
     await send_turn(client, conversation, "我回来了")  # answered by a turn
-    last_contact(database, conversation, clock.now - timedelta(hours=20))
+    last_contact(database, conversation, clock.now - timedelta(hours=12))
     await reach_out.run_due()
     after_a_turn = len(reach_outs(await record(client, conversation)))
 
@@ -301,13 +300,13 @@ async def test_her_tier_now_is_what_she_goes_by(make_client: ClientFactory, sett
         settings=replace(settings, judge=FAKE_JUDGE), random=FakeRandom(0),
     )
     database = settings.database_path
-    last_contact(database, conversation, clock.now - timedelta(hours=20))
+    last_contact(database, conversation, clock.now - timedelta(hours=12))
     keep(database, "producer", 39, clock.now)  # distant: no
     reach_out = backend_of(client).reach_outs
     await reach_out.run_due()
     distant = reach_outs(await record(client, conversation))
 
-    clock.advance(hours=3)  # recovered to trust, 20 hours and more since the last contact
+    clock.advance(hours=3)  # recovered to trust, 12 hours and more since the last contact
     await reach_out.run_due()
 
     assert (len(distant), len(reach_outs(await record(client, conversation)))) == (0, 1)
@@ -323,7 +322,7 @@ async def test_she_is_asked_as_in_a_text_turn_but_told_they_are_not_talking(
     database = settings.database_path
     keep(database, "producer", 90, clock.now)
     await send_turn(client, conversation, "今天好累")
-    last_contact(database, conversation, clock.now - timedelta(hours=3))
+    last_contact(database, conversation, clock.now - timedelta(hours=2))
     write_event(database, conversation, "gift", clock.now - timedelta(hours=1))
 
     await backend_of(client).reach_outs.run_due()
@@ -350,13 +349,13 @@ async def test_she_knows_when_they_last_talked_and_how_long_ago(
     client = make_client(llm, clock=clock, random=FakeRandom(0))
     conversation = await start_conversation(client)
     await send_turn(client, conversation, "我去练习了")
-    last_contact(settings.database_path, conversation, datetime(2026, 10, 18, 13, tzinfo=UTC))
+    last_contact(settings.database_path, conversation, datetime(2026, 10, 18, 21, tzinfo=UTC))
     clock.advance(hours=3)
 
     await backend_of(client).reach_outs.run_due()
 
     assert len(reach_outs(await record(client, conversation))) == 1
-    assert "上次和制作人说话是 10月18日 21:00，隔了 23 小时。" in context_of(llm.prompts[-1])
+    assert "上次和制作人说话是 10月19日 05:00，隔了 15 小时。" in context_of(llm.prompts[-1])
 
 
 async def test_on_his_birthday_she_wishes_him_happy_birthday_once(
@@ -368,7 +367,7 @@ async def test_on_his_birthday_she_wishes_him_happy_birthday_once(
     await client.put("/api/profile", json={"birthday": {"month": 10, "day": 19}})
     conversation = await start_conversation(client)
     await send_turn(client, conversation, "我去练习了")
-    last_contact(settings.database_path, conversation, datetime(2026, 10, 18, 13, tzinfo=UTC))
+    last_contact(settings.database_path, conversation, datetime(2026, 10, 18, 21, tzinfo=UTC))
     clock.advance(hours=3)
 
     await backend_of(client).reach_outs.run_due()
@@ -413,7 +412,7 @@ async def test_she_finds_what_he_told_her_of_their_last_turn_and_his_last_two_we
     remember(database, "制作人10月20日要考资格证", now - timedelta(days=5), superseded_by=exam)
     remember(database, "制作人最近在学吉他", now - timedelta(days=1), told="kogane")
     remember(database, "制作人的猫这两天感冒了", now - timedelta(days=2))
-    last_contact(database, conversation, now - timedelta(hours=20))
+    last_contact(database, conversation, now - timedelta(hours=12))
 
     await backend_of(client).reach_outs.run_due()
 
@@ -441,7 +440,7 @@ async def test_she_reaches_out_on_the_deployers_chat_model_whatever_the_user_bri
     await live_in(client, afternoon(clock.now))
     conversation = await start_conversation(client)
     await send_turn(client, conversation, "在吗", own_llm=OWN_LLM)
-    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=20))
+    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=12))
 
     await backend_of(client).reach_outs.run_due()
 
@@ -475,7 +474,7 @@ async def test_each_has_an_activity_record_of_its_own_which_no_turn_or_call_coun
         await send_turn(client, conversation, "在吗")
     clock.advance(hours=25)  # the turns out of the dashboard's last 24 hours
     for conversation in (mano, kogane):
-        last_contact(database, conversation, clock.now - timedelta(hours=20))
+        last_contact(database, conversation, clock.now - timedelta(hours=12))
 
     await backend_of(client).reach_outs.run_due()
 
@@ -520,12 +519,12 @@ async def test_one_that_fails_is_put_off_by_a_time_from_her_range_and_counts_for
     )
     database = settings.database_path
     await allow_a_day(client, github, 1)
-    keep(database, "producer", 90, clock.now)  # intimate: 3–6 hours
-    last_contact(database, conversation, clock.now - timedelta(hours=3))
+    keep(database, "producer", 90, clock.now)  # intimate: 2–4 hours
+    last_contact(database, conversation, clock.now - timedelta(hours=2))
     reach_out = backend_of(client).reach_outs
 
     await reach_out.run_due()  # fails
-    clock.advance(hours=2, minutes=59)
+    clock.advance(hours=1, minutes=59)
     await reach_out.run_due()
     asked = len(llm.prompts)
     clock.advance(minutes=1)
@@ -547,7 +546,7 @@ async def test_she_sends_no_photo_her_tag_dropped_and_her_words_recorded(
         settings=replace(settings, image=IMAGE, judge=FAKE_JUDGE, affinity_and_gifts=False),
         image_transport=image.transport(), random=FakeRandom(0),
     )
-    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=20))
+    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=12))
 
     await backend_of(client).reach_outs.run_due()
 
@@ -565,7 +564,7 @@ async def test_titles_and_stats_take_no_account_of_her_reach_outs(
         make_client, REPLY, REACH_OUT, REPLY, background_llm=background, random=FakeRandom(0)
     )
     await send_turn(client, conversation, "第二句")
-    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=20))
+    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=12))
     before = await stats(client)
     await backend_of(client).reach_outs.run_due()
     after = await stats(client)
@@ -585,7 +584,7 @@ async def test_off_by_default_the_admin_turns_them_on_with_how_many_a_day(
     client, _, clock, conversation = await talked(
         make_client, REACH_OUT, settings=off, random=FakeRandom(0)
     )
-    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=20))
+    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=12))
     reach_out = backend_of(client).reach_outs
 
     async with admin_beside(client, github) as admin:
@@ -618,7 +617,7 @@ async def test_deleting_the_user_deletes_them_when_she_was_to_come_and_their_swi
     make_client: ClientFactory, settings: Settings
 ):
     client, _, clock, conversation = await talked(make_client, REACH_OUT, random=FakeRandom(0))
-    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=20))
+    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=12))
     await backend_of(client).reach_outs.run_due()
     switched_off = await client.put("/api/account/reach-outs", json={"on": False})
 
@@ -658,8 +657,8 @@ async def test_at_night_she_does_not_come_but_in_the_morning_after_between_8_and
         at=datetime(2026, 10, 19, 12, tzinfo=UTC),  # 20:00 in Shanghai
         random=FakeRandom(0, MIDDLE),
     )
-    # 22:00 in Shanghai, 20 hours on; to 9:00, halfway through the morning
-    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=18))
+    # 22:00 in Shanghai, 12 hours on; to 9:00, halfway through the morning
+    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=10))
     reach_out = backend_of(client).reach_outs
     came = []
     for to in (timedelta(hours=2), timedelta(hours=10, minutes=59), timedelta(minutes=1)):
@@ -670,37 +669,31 @@ async def test_at_night_she_does_not_come_but_in_the_morning_after_between_8_and
     assert came == [0, 0, 1]
 
 
-async def test_a_day_the_earliest_come_first_the_rest_the_next_morning_by_his_time_zone(
+async def test_at_night_she_comes_the_next_morning_by_his_time_zone_though_the_day_is_today_in_utc(
     make_client: ClientFactory, settings: Settings, github: FakeIdentityProvider
 ):
-    """The day goes by the producer's time zone, New York's: Mano, put off from 21:00 there,
-    comes at 9:00 the next morning, though it is the same day still in UTC."""
+    """The morning after goes by the producer's time zone, New York's: Mano, put off from
+    22:00 there, comes at 9:00 the next morning, though it is the same day still in UTC."""
     client, _, clock, mano = await talked(
-        make_client, REPLY, REACH_OUT, REACH_OUT,
+        make_client, REPLY, REACH_OUT,
         settings=replace(settings, admins=frozenset({ADMIN})),
         at=datetime(2026, 10, 20, 0, tzinfo=UTC),  # 20:00 in New York
-        random=FakeRandom(0, 0, MIDDLE),
+        random=FakeRandom(0, MIDDLE),
     )
     await live_in(client, "America/New_York")
     await allow_a_day(client, github, 1)
-    kogane = await start_conversation(client, "kogane")
-    await send_turn(client, kogane, "在吗")
     database = settings.database_path
     at = clock.now + timedelta(hours=1)  # 21:00 in New York
-    last_contact(database, mano, at - timedelta(hours=20))
-    last_contact(database, kogane, at - timedelta(hours=20, minutes=1))  # a minute before
+    last_contact(database, mano, at - timedelta(hours=11))  # her time: 22:00 there
     reach_out = backend_of(client).reach_outs
 
     came = []
     for to in (timedelta(hours=1), timedelta(hours=11, minutes=59), timedelta(minutes=1)):
         clock.advance(seconds=to.total_seconds())
         await reach_out.run_due()
-        came.append((
-            len(reach_outs(await record(client, kogane))),
-            len(reach_outs(await record(client, mano))),
-        ))
+        came.append(len(reach_outs(await record(client, mano))))
 
-    assert came == [(1, 0), (1, 0), (1, 1)]
+    assert came == [0, 0, 1]
 
 
 async def test_one_over_the_day_put_off_past_the_week_does_not_come(
@@ -711,14 +704,14 @@ async def test_one_over_the_day_put_off_past_the_week_does_not_come(
     client, _, clock, mano = await talked(
         make_client, REPLY, REACH_OUT, REACH_OUT,
         settings=replace(settings, admins=frozenset({ADMIN})),
-        at=datetime(2026, 10, 19, 6, tzinfo=UTC),  # 14:00 in Shanghai
+        at=datetime(2026, 10, 19, 13, tzinfo=UTC),  # 21:00 in Shanghai
         random=FakeRandom(0, 0, 0, 0),
     )
     await allow_a_day(client, github, 1)
     kogane = await start_conversation(client, "kogane")
     await send_turn(client, kogane, "在吗")
     database = settings.database_path
-    last_contact(database, mano, clock.now - timedelta(days=6))  # put off to 20 hours on
+    last_contact(database, mano, clock.now - timedelta(days=6))  # put off to 12 hours on
     last_contact(database, kogane, clock.now - timedelta(minutes=1))  # due a minute before
     reach_out = backend_of(client).reach_outs
 
@@ -735,17 +728,17 @@ async def test_one_over_the_day_put_off_past_the_week_does_not_come(
 async def test_what_came_as_the_backend_was_down_is_not_made_up_for_but_put_off(
     make_client: ClientFactory, settings: Settings
 ):
-    """Put off by a time from her range, from as it starts: 28 hours, halfway."""
+    """Put off by a time from her range, from as it starts: 18 hours, halfway."""
     client, llm, clock, conversation = await talked(
         make_client, REACH_OUT,
-        at=datetime(2026, 10, 19, 4, tzinfo=UTC),  # 12:00 in Shanghai
+        at=datetime(2026, 10, 19, 12, tzinfo=UTC),  # 20:00 in Shanghai
         random=FakeRandom(0, MIDDLE),
     )
-    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=22))  # 10:00
+    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=22))  # 22:00
     reach_out = backend_of(client).reach_outs
 
     came = []
-    for to in (timedelta(0), timedelta(hours=27, minutes=59), timedelta(minutes=1)):
+    for to in (timedelta(0), timedelta(hours=17, minutes=59), timedelta(minutes=1)):
         clock.advance(seconds=to.total_seconds())
         await reach_out.run_due()
         came.append(len(reach_outs(await record(client, conversation))))
@@ -781,7 +774,7 @@ async def test_she_does_not_reach_out_while_they_are_talking(
     thinking = asyncio.Event()
     replies = [[thinking, *REPLY], REACH_OUT] if taking == "a text turn" else [REACH_OUT]
     client, llm, clock, conversation = await talked(make_client, *replies, random=FakeRandom(0))
-    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=20))
+    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=12))
     turn = None
     if taking == "a text turn":
         turn = asyncio.create_task(send_turn(client, conversation, "在吗"))
@@ -809,7 +802,7 @@ async def test_what_she_thought_as_the_user_spoke_is_not_recorded_its_record_ref
         make_client, [thinking, *REACH_OUT], REPLY, random=FakeRandom(0)
     )
     database = settings.database_path
-    last_contact(database, conversation, clock.now - timedelta(hours=20))
+    last_contact(database, conversation, clock.now - timedelta(hours=12))
     reaching_out = asyncio.create_task(backend_of(client).reach_outs.run_due())
     await until(lambda: len(llm.prompts) == 2)
 

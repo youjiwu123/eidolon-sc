@@ -46,12 +46,12 @@ async def test_it_counts_those_she_reached_out_those_that_failed_and_the_share_a
 ):
     client, _, clock, conversation = await talked(
         make_client, LLMError("模型返回 503: overloaded"), REACH_OUT, REPLY,
-        random=FakeRandom(0, 0),
+        random=FakeRandom(0, 0, 0),
     )
     database = settings.database_path
-    last_contact(database, conversation, clock.now - timedelta(hours=20))
+    last_contact(database, conversation, clock.now - timedelta(hours=12))
     reach_out = backend_of(client).reach_outs
-    await reach_out.run_due()  # fails, put off by 20 hours
+    await reach_out.run_due()  # fails, put off by 12 hours, to the morning after
     clock.advance(hours=20)
     await reach_out.run_due()
     unanswered = await section(client, github)
@@ -82,9 +82,9 @@ async def test_a_call_that_connects_answers_her_but_a_gift_or_a_call_that_never_
         make_client, REACH_OUT, settings=gifting, random=FakeRandom(COMMON, FIRST, 0),
     )
     assert (await client.get("/api/gifts")).status_code == 200
-    # One of the draws a new user starts with.
+    # Once: the turn talked about did a daily task too, giving another chance.
     assert (await client.post("/api/gifts/draws", json={"all": False})).status_code == 200
-    last_contact(gifting.database_path, conversation, clock.now - timedelta(hours=20))
+    last_contact(gifting.database_path, conversation, clock.now - timedelta(hours=12))
     await backend_of(client).reach_outs.run_due()
 
     await given(client, "cake")
@@ -106,13 +106,13 @@ async def test_a_turn_answers_only_her_latest_reach_out_not_one_she_makes_after_
     make_client: ClientFactory, settings: Settings, github: FakeIdentityProvider
 ):
     client, _, clock, conversation = await talked(
-        make_client, REACH_OUT, REPLY, REACH_OUT, REPLY, random=FakeRandom(0, 0),
+        make_client, REACH_OUT, REPLY, REACH_OUT, REPLY, random=FakeRandom(0, 0, 0),
     )
-    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=20))
+    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=12))
     reach_out = backend_of(client).reach_outs
     await reach_out.run_due()
     await send_turn(client, conversation, "我回来了")
-    clock.advance(hours=21)  # her time after the turn, 20 hours on
+    clock.advance(hours=21)  # her time after the turn, 12 hours on
     await reach_out.run_due()
     once_answered = await section(client, github)
 
@@ -127,7 +127,7 @@ async def test_with_reach_outs_off_and_none_in_the_range_there_is_no_section(
 ):
     client, _, clock, conversation = await talked(make_client, REACH_OUT, random=FakeRandom(0))
     on_and_none = await section(client, github)
-    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=20))
+    last_contact(settings.database_path, conversation, clock.now - timedelta(hours=12))
     await backend_of(client).reach_outs.run_due()
 
     async with admin_beside(client, github) as admin:

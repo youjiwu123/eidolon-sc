@@ -67,10 +67,6 @@ docker compose -f docker-compose.prod.yml up -d
 
 第一次启动时 Caddy 会申请证书，稍等片刻后用浏览器打开 `https://你的域名`。后端启动失败时（缺少人设文件、对话模型检查不通过等），用 `docker compose -f docker-compose.prod.yml logs backend` 查看原因。
 
-- **日志**：每个容器的日志最多留 5 个 10 MB 的文件，旧的自动删掉。后端每行都带时间和来源；访问日志不记查询字符串。事件循环比预期晚醒 200 ms 以上时，后端会记一条 `the event loop ran … ms late, … calls in progress`，可以用来判断机器是否忙不过来。
-- **健康检查**：后端的 `/api/health` 读不了数据库时返回 503，`docker compose ps` 里显示为 unhealthy，但不会自动重启。
-- **停止和更新**：后端停止时，先给进行中的请求 20 秒（比如正在生成的文字回复），然后挂断所有通话。所以更新时正在进行的通话会断开，但都会正常结算。
-
 不用自带的 Caddy、自己配反向代理（nginx 等）的，要给 `/api/account/data-package` 这一个地址放开请求体的大小上限到 200 MiB：用户导入的数据包就是这个地址的请求体，nginx 默认只放 1 MB（`client_max_body_size 200m;`）。后端自己也会拒绝超过 200 MiB 的数据包。
 
 下面的命令都要带上 `-f docker-compose.prod.yml`。嫌麻烦的话，在这台服务器上执行一次 `export COMPOSE_FILE=docker-compose.prod.yml`（或者写进 shell 的配置文件），之后 README 和配置指南里的 `docker compose ...` 命令就能原样使用。
@@ -232,7 +228,7 @@ docker compose -f docker-compose.prod.yml exec backend eidolon eval memory --jso
 | `thumbnails/<stand 或 stand_costume>/<enzaId>.png` | 这套衣装的缩略图：电脑「半身 ADV」的取景，400×500，透明背景 |
 | `outfits/<idol_id>.json` | 这位角色的衣装清单，换衣装面板按它列出衣装 |
 | `greetings/<角色标识>-<哈希>.mp3` | 落地页上她的招呼，由 `eidolon greeting upload` 合成上传，见下面的「招呼」 |
-| `call-openers/<角色标识>-<哈希>.mp3` | 落地页演示来电里她的开场白，同样由 `eidolon greeting upload` 合成上传，见下面「招呼」里的「开场白」 |
+| `call-openers/<角色标识>-<哈希>.mp3` | 落地页演示来电里她的开场白（登录后的通话由后端按同一段文字另行合成），同样由 `eidolon greeting upload` 合成上传，见下面「招呼」里的「开场白」 |
 | `call-posters/<角色标识>.webp` | 落地页演示来电里她的卡图（联系人海报），手动上传，见下面「招呼」里的「来电卡图」 |
 | `landing-voxels/<角色标识>.json` | 落地页第 5 幕里她的体素小人，手动上传，见下面「招呼」里的「体素小人」 |
 | `landing-memory/still.webp` | 落地页第 5 幕事先渲染好的终局全景图，给不播放动画的访客，手动上传，见下面「招呼」里的「第 5 幕的静止图」 |
@@ -351,7 +347,7 @@ greeting_subtitle = "……初次见面"              # 中文字幕
 
 ### 开场白
 
-落地页第 4 幕的演示来电里，访客接听后打来电话的那位说一句开场白（GLOSSARY.md「开场白」）。它和招呼一样写在 `characters.toml` 她那一段，规则也一样（两项一起配、双引号单行、语气提示只给语音合成听），只有打来电话的那一位需要配，没配的话接通后只有立绘和计时：
+通话接通后她先说一句开场白（GLOSSARY.md「开场白」）：落地页第 4 幕的演示来电放存储桶里的那一份；登录后用户拨打的电话，由后端在第一次接通时按同一段文字合成，缓存在数据卷的 `speech/` 下，以后再接通直接放缓存。它和招呼一样写在 `characters.toml` 她那一段，规则也一样（两项一起配、双引号单行、语气提示只给语音合成听）；没配的话接通后只有立绘和计时：
 
 ```toml
 call_opener = "[shyly] あっ、もしもし……真乃です。えっと、今、お電話だいじょうぶですか？"
@@ -500,7 +496,7 @@ uv run eidolon reading draft
 
 ## 后台
 
-后台是同一个网站上的 `/admin`，只有管理者能进入（ADR-0013）：看板（各项服务是否正常、用量、估算的花费）、配置（模型、key、限额、单价）和用户（搜索、封禁、单独限额、删除）。管理者在后台里看不到任何用户的对话、记忆和制作人档案，也看不到、改不了某位用户的好感度、礼物、抽奖次数和成就，只能看到所有用户合起来的统计；判断模型误判时，可以在配置页给所有现有用户各发一张重置卡（见[配置指南](configuration.md#好感度和礼物)）。其他人看不到入口，访问 `/admin` 和后台接口都得到 404。
+后台是同一个网站上的 `/admin`，只有管理者能进入（ADR-0013）：看板（各项服务是否正常、用量、估算的花费）、配置（模型、key、限额、单价）和用户（搜索、封禁、单独限额、删除）。管理者在后台里看不到任何用户的对话、记忆和制作人档案，也看不到、改不了某位用户的好感度、礼物、抽奖次数、每日任务和成就，只能看到所有用户合起来的统计；判断模型误判时，可以在配置页给所有现有用户各发一张重置卡（见[配置指南](configuration.md#好感度和礼物)）。其他人看不到入口，访问 `/admin` 和后台接口都得到 404。
 
 ### 开启后台
 
@@ -629,14 +625,6 @@ db.commit()
 有人新开 issue 时，Issue duplicates workflow 会让 LLM 在以前的 issue（含已关闭的）里找同一个问题，找到就评论列出最多三个（[`scripts/issue_duplicates.py`](../scripts/issue_duplicates.py)）。它只评论，不打标签、不关 issue。LLM 用上面发版本的那三项配置，没配就跳过。
 
 想先试效果：在 Actions 页面选 Issue duplicates，点 Run workflow，填一个 issue 编号，不勾「找到了就评论」，结果只出现在运行日志里。本机看给 LLM 的材料：`python3 scripts/issue_duplicates.py 159 --dry-run`。
-
-### 玩法仓库登记
-
-有人用「玩法仓库登记」模板开 issue 时，Fork showcase workflow 会检查仓库地址：能不能打开、是不是公开、仓库名是不是还叫 eidolon-sc（[`scripts/fork_showcase.py`](../scripts/fork_showcase.py)）。结果写在一条评论里，对方编辑 issue 后会更新这条评论；没通过就打 `needs-info`，通过了就摘掉。
-
-看过对方仓库、觉得可以收录，就给 issue 打上 `accepted` 标签。workflow 会再查一遍，然后把这一条写进 [`docs/community-forks.md`](community-forks.md) 里对应分级的一节，提交到 main，评论并关闭 issue。这次提交不会触发 CI。之后要改简介或下线某一条，直接改这份文档，每一条行末的注释里记着登记 issue 的编号。
-
-本机看会写进文档的那一行：`python3 scripts/fork_showcase.py accept 171 --dry-run`。
 
 ### 镜像的可见性
 

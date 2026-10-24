@@ -20,15 +20,15 @@ synthesis and emotion judging are recorded under the call (`Recording.add`), not
 
 A reach-out's record says whether the user answered it: had a turn, or a call that connected,
 in its conversation after it and before the next. The store marks it so as it records the
-turn or keeps the call (`store.add_turn`, `store.keep_call`), by the record its reach-out
+turn or keeps the call (`Store.add_turn`, `Store.keep_call`), by the record its reach-out
 names; or as that is kept, should they have been in touch since (`Store.reach_out_recorded_as`).
 
-An achievement's stage unlocked (GLOSSARY.md「成就」) has a record of its own, with the
+A daily task done (GLOSSARY.md「每日任务」) has a record of its own, with no character and
+which task in its result (`ActivityLog.daily_task_done`): no turn nor call, nor counted as
+one anywhere. So has an achievement's stage unlocked (GLOSSARY.md「成就」), with the
 character it is hers of (none for those of all the characters together) and which stage of
-which achievement in its result, and so has a character complete, with `COMPLETE` in its
-result (`ActivityLog.achievement_unlocked`, `ActivityLog.character_complete`): no turn nor
-call, nor counted as one anywhere. Daily tasks done had records too, until they were retired
-(`_forget_daily_tasks`).
+which achievement in its result, and a character complete, with `COMPLETE` in its result
+(`ActivityLog.achievement_unlocked`, `ActivityLog.character_complete`).
 
 A photo she sends (`photos`) is generated in the context of the turn it was begun in, and
 often comes out after the turn is over: its request to the image service is recorded under
@@ -44,8 +44,8 @@ the client to tell what the request is billed for. A call abandoned part-way, as
 user leaves, is not a failure; an attempt the client made again (`retry`) is a call of
 its own, failed.
 
-Records are kept for 90 days (`KEPT`); older ones are deleted as the backend tidies up
-(`housekeeping`), as uses of the limit are. A deleted user's records stay, for the numbers not to change, but
+Records are kept for 90 days (`KEPT`); older ones are deleted whenever a turn begins, as
+uses of the limit are. A deleted user's records stay, for the numbers not to change, but
 no longer say whose they were (`database.ANONYMIZED_USER_DATA`).
 
 As each record and service call is written, it is also rolled up, in the same transaction,
@@ -67,11 +67,13 @@ import math
 import re
 import secrets
 import sqlite3
+import threading
 from collections.abc import AsyncIterator, Awaitable, Iterator, Sequence
 from contextlib import contextmanager
 from contextvars import Context, ContextVar, copy_context
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from time import perf_counter
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 from urllib.parse import urlsplit
@@ -93,9 +95,8 @@ from eidolon.config import (
     ServiceName,
     Settings,
 )
-from eidolon.data_access import Database
+from eidolon.database import connect
 from eidolon.embedding import Document, Embedder
-from eidolon.housekeeping import in_batches
 from eidolon.judge import CLOUDFLARE_API_URL
 from eidolon.llm import ChatLLM, ChatMessage, Reasoning, Streamed, Tool
 from eidolon.photo_prompt import CROSSINGS, Crossing
@@ -114,15 +115,16 @@ LLM_SERVICES: tuple[ServiceName, ...] = ("chat_llm", "memory_llm")
 """The LLMs among them (`llm_origin`): a user's own is recorded as `OWN`, and each call
 says how soon its first word came and at which reasoning effort."""
 
-RecordKind = Literal["turn", "call", "reach_out", "achievement"]
+RecordKind = Literal["turn", "call", "reach_out", "daily_task", "achievement"]
 """A reach-out is neither a turn nor a call, nor counted as one anywhere; it is always on the
-deployer's keys. Nor is an achievement's stage unlocked or a character complete, which has no
-service calls."""
+deployer's keys. Nor is a daily task done, which has no character and no service calls, nor
+an achievement's stage unlocked or a character complete, which have none either."""
 Result = Literal["success", "failed", "rejected", "left", "not_connected"]
 """How a turn or call turned out (GLOSSARY.md「回合」「接通」): a turn succeeded, failed on
 a service, was rejected (over the limit, or its input), or the user left before it was
-done; a call also may never have connected. A reach-out succeeds or fails. An achievement's
-record has which stage of which instead (`stage_unlocked`), or `COMPLETE`."""
+done; a call also may never have connected. A reach-out succeeds or fails. A daily task
+done has which task it was (`happenings.DAILY_TASKS`) instead; an achievement's record, which
+stage of which (`stage_unlocked`), or `COMPLETE`."""
 RESULTS: tuple[Result, ...] = ("success", "failed", "rejected", "left", "not_connected")
 
 COMPLETE = "complete"
@@ -152,7 +154,7 @@ these, and sorts the users by them (`Store.find_users`)."""
 
 TURNS_AND_CALLS = "kind IN ('turn', 'call')"
 """Which records, in SQL over `activity_records`, are of turns and calls: not of reach-outs,
-which the user did not take, nor of achievements."""
+which the user did not take, nor of daily tasks done or achievements."""
 
 JUDGEMENT_COLUMNS = ("affinity_level", "out_of_line", "manipulation", "cooled")
 """What a turn's record keeps of how the judge model judged it, as its columns are named."""
@@ -173,7 +175,7 @@ _SCHEMA = """
 -- she ended the conversation after a typed turn (`affinity.EndsFor`), NULL if she did not.
 -- `answered` is whether a reach-out was answered (GLOSSARY.md「搭话」): the user had a turn,
 -- or a call connected, in its conversation after it and before the next; the store marks it
--- so, by the record its reach-out keeps (`store.add_turn`, `store.keep_call`,
+-- so, by the record its reach-out keeps (`Store.add_turn`, `Store.keep_call`,
 -- `Store.reach_out_recorded_as`). 0 for others.
 CREATE TABLE IF NOT EXISTS activity_records (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -479,7 +481,8 @@ class RecordGroup:
     kind: RecordKind
     character_id: str
     result: Result | str
-    """How it turned out; for an achievement, which stage, or `COMPLETE`."""
+    """How it turned out; for a daily task done, which task; for an achievement, which
+    stage, or `COMPLETE`."""
     own_keys: bool
     """`RecordRow.own_keys`: for a turn, its own LLM; for a call, its being exempt."""
     in_call: bool
@@ -610,7 +613,8 @@ class Recording:
         self.calls: list[ServiceCall] = []
         self.finished = False
         self.result: Result | str | None = None
-        """How it turned out; for an achievement, which stage, or `COMPLETE`."""
+        """How it turned out; for a daily task done, which task; for an achievement, which
+        stage, or `COMPLETE`."""
         self.duration_s: float | None = None
         self.end_reason: CallEndReason | None = None
         self.judged_as: Judged | None = None
@@ -621,9 +625,6 @@ class Recording:
         self.turns: list[Recording] = []
         """For a call, the turns taken in it."""
         self.row_id: int | None = None  # once written
-        self.handed_in = False
-        """Whether it has been handed in to be written (`Database.write`): the service calls
-        made after are written apart, under it."""
         self._started = perf_counter()
 
     @contextmanager
@@ -659,41 +660,49 @@ class Recording:
         self, origin: Origin, error: ErrorKind | None, latency_ms: float | None, billed: Billing
     ) -> None:
         """A service call made in this call (or turn) has ended, having taken `latency_ms`."""
-        self._log.record_soon(
-            ServiceCall(origin, self._log.now(), error, latency_ms, billed), self
-        )
+        self._log.record(ServiceCall(origin, self._log.now(), error, latency_ms, billed), self)
 
-    async def finish(
+    def finish(
         self,
         result: Result | str,
         duration_s: float | None = None,
         end_reason: CallEndReason | None = None,
     ) -> None:
         """Write the record, as `result` (a call's with how long it lasted and why it
-        ended; an achievement's, which stage of which), with its service calls; only the first
-        time. A turn in a call is written with the call, or at once if the call's record has
-        been handed in already. Writing it failing is only logged."""
+        ended; a daily task done's, which task), with its service calls; only the first time. A turn in a call is written
+        with the call, or at once if the call's record has been written already."""
         if self.finished:
             return
         self.finished = True
         self.result, self.duration_s, self.end_reason = result, duration_s, end_reason
-        if self.call is None or self.call.handed_in:
-            await self._log._write(self)
+        if self.call is None or self.call.finished:
+            self._log._write(self)
 
 
 class ActivityLog:
-    """Every turn's activity record and every service call's, kept in the database: each
-    written as a write task of its own (ADR-0028), never in one with what it records, so that
-    writing it failing, only logged, fails no turn nor call."""
+    """Every turn's activity record and every service call's, kept in the database."""
 
-    def __init__(self, db: Database, clock: Clock) -> None:
-        self._db = db
-        db.prepare(_open)
-        # On every connection: records and service calls are rolled up as they are written.
-        db.function("spread_bucket", 1, _bucket, deterministic=True)
-        db.prepare(_open_rollups)
+    def __init__(self, path: Path, clock: Clock) -> None:
+        self._db = connect(path)
+        self._lock = threading.Lock()
+        with self._lock, self._db:
+            self._db.executescript(_SCHEMA)
+            _let_latency_be_unknown(self._db)
+            _add_llm_columns(self._db)
+            _add_stripped_tags_column(self._db)
+            _add_judgement_columns(self._db)
+            _add_answered_column(self._db)
+            _forget_own_llms(self._db)
+        self._db.create_function("spread_bucket", 1, _bucket, deterministic=True)
+        self._db.executescript(_ROLLUP_SCHEMA + _answered_trigger())
+        with self._lock, self._db:
+            _roll_up_all(self._db)
+        # Summing up a long range takes a while: on a connection of its own, records are
+        # written meanwhile, not kept waiting.
+        self._reader = connect(path)
+        self._reader.execute("PRAGMA query_only = ON")
+        self._reading = threading.Lock()
         self._clock = clock
-        self._soon: set[asyncio.Task[None]] = set()
 
     def now(self) -> datetime:
         return self._clock()
@@ -703,39 +712,30 @@ class ActivityLog:
     ) -> Recording:
         """Open the record of a turn or call the user begins with `character_id`, on their
         own LLM or not and exempt from the limit or not: a turn's record keeps the
-        first, a call's the second (GLOSSARY.md「运行记录」)."""
-        return Recording(self, kind, user_id, character_id, self._clock(), own_llm, exempt)
+        first, a call's the second (GLOSSARY.md「运行记录」). Forgets every record older
+        than `KEPT`."""
+        now = self._clock()
+        self._forget_before(now - KEPT)
+        return Recording(self, kind, user_id, character_id, now, own_llm, exempt)
 
-    async def forget_old(self) -> None:
-        """Delete every record and service call older than `KEPT`, and the rollups of the
-        slots and days over by then: one that is not holds some of those deleted still, as
-        the range it begins does (`range_start`). In batches (`housekeeping.in_batches`)."""
-        at = (self._clock() - KEPT).timestamp()
-        await in_batches(self._db, _forget_calls_before, at)
-        await in_batches(self._db, _forget_records_before, at)
-        for table in ("record_rollups", "user_rollups", "spread_rollups"):
-            for length in (SLOT, DAY):
-                await in_batches(self._db, _forget_rollups_before, table, length, at - length)
-        for table in ("taken_rollups", "call_rollups"):
-            await in_batches(self._db, _forget_rollups_before, table, None, at - SLOT)
+    def daily_task_done(self, user_id: str, task_id: str, at: datetime) -> None:
+        """The user did the daily task `at`: recorded, with no character."""
+        Recording(self, "daily_task", user_id, "", at, False, False).finish(task_id)
 
-    async def achievement_unlocked(
+    def achievement_unlocked(
         self, user_id: str, character_id: str | None, achievement: str, stage: int, at: datetime
     ) -> None:
         """The user unlocked the achievement's `stage` `at`: recorded, with the character it is
-        hers of, or none for those of all the characters together, as a write task of its own;
-        failing, only logged."""
-        await Recording(
-            self, "achievement", user_id, character_id or "", at, False, False
-        ).finish(stage_unlocked(achievement, stage))
-
-    async def character_complete(self, user_id: str, character_id: str, at: datetime) -> None:
-        """The user completed the character `at`: recorded, as `achievement_unlocked` is."""
-        await Recording(self, "achievement", user_id, character_id, at, False, False).finish(
-            COMPLETE
+        hers of, or none for those of all the characters together."""
+        Recording(self, "achievement", user_id, character_id or "", at, False, False).finish(
+            stage_unlocked(achievement, stage)
         )
 
-    def ended_call(
+    def character_complete(self, user_id: str, character_id: str, at: datetime) -> None:
+        """The user completed the character `at`: recorded."""
+        Recording(self, "achievement", user_id, character_id, at, False, False).finish(COMPLETE)
+
+    def call(
         self,
         origin: Origin,
         started: float,
@@ -743,60 +743,45 @@ class ActivityLog:
         billed: Billing,
         first_token_at: float | None = None,
         stripped: Sequence[Crossing] = (),
-    ) -> ServiceCall:
-        """A service call, begun at `started` (`perf_counter`), ended now. An LLM's says
-        when its first text or tool call came (`first_token_at`, also `perf_counter`), if one
-        did; image generation's, which part of the line each tag stripped from her photo tag
+    ) -> None:
+        """A service call, begun at `started` (`perf_counter`), has ended: recorded under
+        the turn it was made in, if it is still open, or on its own. An LLM's says when its
+        first text or tool call came (`first_token_at`, also `perf_counter`), if one did;
+        image generation's, which part of the line each tag stripped from her photo tag
         crossed."""
-        return ServiceCall(
+        call = ServiceCall(
             origin, self._clock(), error, (perf_counter() - started) * 1000, billed,
             (first_token_at - started) * 1000 if first_token_at is not None else None,
             _counted(stripped),
         )
+        self.record(call, _current.get())
 
-    async def call(
-        self,
-        origin: Origin,
-        started: float,
-        error: ErrorKind | None,
-        billed: Billing,
-        first_token_at: float | None = None,
-    ) -> None:
-        """A service call (`ended_call`) has ended: recorded under the turn it was made
-        in, or on its own."""
-        await self.record(
-            self.ended_call(origin, started, error, billed, first_token_at), _current.get()
-        )
-
-    async def record(self, call: ServiceCall, into: Recording | None) -> None:
-        """A service call, recorded under `into`: with it until it is handed in to be written
-        (a turn in a call, with the call), under it after; on its own without one. Writing
-        it failing is only logged."""
-        if into is not None and not into.handed_in:
+    def record(self, call: ServiceCall, into: Recording | None) -> None:
+        """A service call, recorded under `into`: with it until it is written (a turn in a
+        call, with the call), under it once it is; on its own without one."""
+        if into is not None and into.row_id is None:
             into.calls.append(call)
-            return
-        try:
-            await self._db.write(_insert_call_under, call, into)
-        except Exception:
-            log.exception("writing a call to %s failed", call.origin.service)
+        else:
+            with self._lock, self._db:
+                self._insert_call(call, into.row_id if into is not None else None)
 
-    async def aclose(self) -> None:
-        """Wait for what `record_soon` is writing."""
-        while self._soon:
-            await asyncio.gather(*self._soon, return_exceptions=True)
-
-    def record_soon(self, call: ServiceCall, into: Recording) -> None:
-        """`record`, from a caller that cannot wait for it to be written."""
-        if not into.handed_in:
-            into.calls.append(call)
-            return
-        task = asyncio.ensure_future(self.record(call, into))
-        self._soon.add(task)
-        task.add_done_callback(self._soon.discard)
-
-    async def since(self, moment: datetime) -> tuple[list[RecordRow], list[CallRow]]:
+    def since(self, moment: datetime) -> tuple[list[RecordRow], list[CallRow]]:
         """Every record and service call after `moment`, oldest first."""
-        records, calls = await self._db.read(_since, moment.timestamp())
+        at = moment.timestamp()
+        with self._lock:
+            records = self._db.execute(
+                "SELECT kind, COALESCE(user_id, anonymous_id), character_id, started_at, result,"
+                " own_keys, time_to_speak_ms, duration_s, end_reason, call_id IS NOT NULL,"
+                f" {', '.join(JUDGEMENT_COLUMNS)}, ended_conversation, answered"
+                " FROM activity_records WHERE started_at > ? ORDER BY started_at",
+                (at,),
+            ).fetchall()
+            calls = self._db.execute(
+                "SELECT service, provider, model, own_key, at, error, latency_ms, usage_unit,"
+                " usage_input, usage_output, first_token_ms, reasoning_effort, usage_cached,"
+                " stripped_tags FROM service_calls WHERE at > ? ORDER BY at",
+                (at,),
+            ).fetchall()
         return (
             [
                 RecordRow(
@@ -821,49 +806,89 @@ class ActivityLog:
             ],
         )
 
-    async def tally(self, moment: datetime, starts: Sequence[datetime]) -> Tally:
+    def tally(self, moment: datetime, starts: Sequence[datetime]) -> Tally:
         """The records and service calls from the start of the slot `moment` falls in
         (`range_start`), summed up from their rollups, for there may be millions: their trend
         in stretches beginning at `starts` (the first taking in whatever comes before it),
-        and how many calls lasted within each of `DURATIONS`. All of it as of one moment,
-        summed up on the thread it is read on."""
-        return await self._db.read(_tally, range_start(moment).timestamp(), starts)
+        and how many calls lasted within each of `DURATIONS`."""
+        at = range_start(moment).timestamp()
+        with self._reading:
+            db = self._reader
+            db.execute("BEGIN")  # all of it as of one moment
+            try:
+                return _tally(db, at, starts)
+            finally:
+                db.rollback()
 
-    async def billed_models(self, moment: datetime) -> dict[tuple[str, str, str], ServiceName]:
+    def billed_models(self, moment: datetime) -> dict[tuple[str, str, str], ServiceName]:
         """What the deployer's service calls after `moment` were billed for, by provider,
         model and unit, each with the service its latest call was to."""
-        rows = await self._db.read(_billed_models, moment.timestamp())
+        with self._reading:
+            rows = self._reader.execute(
+                # The bare `service` is of the row whose `at` is the greatest.
+                "SELECT provider, model, usage_unit, service, MAX(at) FROM service_calls"
+                " WHERE at > ? AND own_key = 0 AND usage_unit IS NOT NULL"
+                " AND (usage_input IS NOT NULL OR usage_output IS NOT NULL)"
+                " GROUP BY provider, model, usage_unit",
+                (moment.timestamp(),),
+            ).fetchall()
         return {(provider, model, unit): service for provider, model, unit, service, _ in rows}
 
-    async def deployer_calls_since(self, moment: datetime) -> dict[ServiceName, tuple[int, int]]:
+    def deployer_calls_since(self, moment: datetime) -> dict[ServiceName, tuple[int, int]]:
         """How many calls to each service after `moment` were on the deployer's keys, and
         how many of them failed; only those with any."""
-        rows = await self._db.read(_deployer_calls_since, moment.timestamp())
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT service, COUNT(*), SUM(error IS NOT NULL) FROM service_calls"
+                " WHERE at > ? AND own_key = 0 GROUP BY service",
+                (moment.timestamp(),),
+            ).fetchall()
         return {service: (calls, failed) for service, calls, failed in rows}
 
-    async def of_user(self, user_id: str, moment: datetime) -> list[RecordRow]:
+    def of_user(self, user_id: str, moment: datetime) -> list[RecordRow]:
         """The user's records of turns and calls after `moment`, oldest first, not of
         reach-outs; only how each turned out and on whose keys are of use to the admin's users
         page."""
-        rows = await self._db.read(_of_user, user_id, moment.timestamp())
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT kind, character_id, started_at, result, own_keys,"
+                " call_id IS NOT NULL FROM activity_records"
+                f" WHERE user_id = ? AND started_at > ? AND {TURNS_AND_CALLS}"
+                " ORDER BY started_at",
+                (user_id, moment.timestamp()),
+            ).fetchall()
         return [
             RecordRow(kind, user_id, character, _time(started), result,
                       *_reading_own_keys(kind, own), None, in_call=bool(in_call))
             for kind, character, started, result, own, in_call in rows
         ]
 
-    async def taken_since(
-        self, user_ids: Sequence[str], moment: datetime
-    ) -> dict[str, dict[str, int]]:
+    def reached_out_since(self, user_id: str, moment: datetime) -> int:
+        """How many times characters reached out to the user since `moment`, as of when each
+        began; only those recorded count, not those that failed or were refused."""
+        with self._lock:
+            [count] = self._db.execute(
+                "SELECT COUNT(*) FROM activity_records WHERE user_id = ? AND started_at >= ?"
+                " AND kind = 'reach_out' AND result = 'success'",
+                (user_id, moment.timestamp()),
+            ).fetchone()
+        return count
+
+    def taken_since(self, user_ids: Sequence[str], moment: datetime) -> dict[str, dict[str, int]]:
         """How many turns and calls (by `RecordKind`) each of the users took after
         `moment`, not counting those rejected (`TAKEN`); a user who took none is not in
         it."""
         if not user_ids:
             return {}
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT user_id, kind, COUNT(*) FROM activity_records"
+                f" WHERE user_id IN ({','.join('?' * len(user_ids))}) AND started_at > ?"
+                f" AND {TAKEN} AND {TURNS_AND_CALLS} GROUP BY user_id, kind",
+                [*user_ids, moment.timestamp()],
+            ).fetchall()
         taken: dict[str, dict[str, int]] = {}
-        for user_id, kind, count in await self._db.read(
-            _taken_since, list(user_ids), moment.timestamp()
-        ):
+        for user_id, kind, count in rows:
             taken.setdefault(user_id, {})[kind] = count
         return taken
 
@@ -877,236 +902,76 @@ class ActivityLog:
             [kind, moment.timestamp()],
         )
 
-    async def _write(self, recording: Recording) -> None:
-        """Write a finished record with its service calls and, for a call, its turns, as
-        they are now; failing, only logged."""
-        try:
-            await self._db.write(_insert_records, _handed_in(recording), secrets.token_hex(16))
-        except Exception:
-            log.exception("writing the activity record of a %s failed", recording.kind)
+    def close(self) -> None:
+        self._db.close()
+        self._reader.close()
 
+    def _write(self, recording: Recording) -> None:
+        """Write a finished record with its service calls and, for a call, its turns."""
+        # Should the user have been deleted meanwhile, the records are theirs anonymously
+        # (`database.ANONYMIZED_USER_DATA`), as one more deleted user.
+        anonymous = secrets.token_hex(16)
+        with self._lock, self._db:
+            self._insert(recording, anonymous)
+            for turn in recording.turns:
+                self._insert(turn, anonymous)
 
-def read_reached_out_since(db: sqlite3.Connection, user_id: str, moment: datetime) -> int:
-    """How many times characters reached out to the user since `moment`, as of when each
-    began, read through `db`; only those recorded count, not those that failed or were
-    refused."""
-    [count] = db.execute(
-        "SELECT COUNT(*) FROM activity_records WHERE user_id = ? AND started_at >= ?"
-        " AND kind = 'reach_out' AND result = 'success'",
-        (user_id, moment.timestamp()),
-    ).fetchone()
-    return count
-
-
-@dataclass(frozen=True)
-class _Written:
-    """A record handed in to be written: with the service calls made in it so far."""
-
-    recording: Recording
-    calls: tuple[ServiceCall, ...]
-
-
-def _handed_in(recording: Recording) -> list[_Written]:
-    """`recording`, and for a call its turns finished, handed in to be written as they are
-    now: the service calls made in them after are written apart (`ActivityLog.record`). A
-    turn not finished yet is written as it is (`Recording.finish`)."""
-    written = []
-    for each in (recording, *(turn for turn in recording.turns if turn.finished)):
-        each.handed_in = True
-        written.append(_Written(each, tuple(each.calls)))
-    return written
-
-
-def _open(db: sqlite3.Connection) -> None:
-    """Make the tables, and bring those of an older version up to date."""
-    db.executescript(_SCHEMA)
-    _let_latency_be_unknown(db)
-    _add_llm_columns(db)
-    _add_stripped_tags_column(db)
-    _add_judgement_columns(db)
-    _add_answered_column(db)
-    _forget_own_llms(db)
-
-
-def _open_rollups(db: sqlite3.Connection) -> None:
-    """Make the rollups, from the records should there be none."""
-    db.executescript(_ROLLUP_SCHEMA + _answered_trigger())
-    _forget_daily_tasks(db)
-    _roll_up_all(db)
-
-
-def _forget_daily_tasks(db: sqlite3.Connection) -> None:
-    """Daily tasks done were recorded, and rolled up, until they were retired; a database of
-    theirs is left with none of them. Deleting records is only asked where there are any:
-    else one with no table of users, as a test's may be, refuses it."""
-    daily_task_records = "FROM activity_records WHERE kind = 'daily_task'"
-    if db.execute(f"SELECT EXISTS (SELECT 1 {daily_task_records})").fetchone()[0]:
-        db.execute(f"DELETE {daily_task_records}")
-    db.execute("DELETE FROM record_rollups WHERE kind = 'daily_task'")
-
-
-def _insert_records(db: sqlite3.Connection, written: list[_Written], anonymous: str) -> None:
-    """Insert each record `written`, with its service calls; a turn in a call, under the
-    call's record, which comes before it or was written already. Each is given its row's
-    id: the service calls written apart under it come after (`_insert_call_under`)."""
-    # Should the user have been deleted meanwhile, the records are theirs anonymously
-    # (`database.ANONYMIZED_USER_DATA`), as one more deleted user.
-    try:
-        for each in written:
-            _insert(db, each.recording, each.calls, anonymous)
-    except BaseException:
-        for each in written:  # rolled back
-            each.recording.row_id = None
-        raise
-
-
-def _insert(
-    db: sqlite3.Connection,
-    recording: Recording,
-    calls: Sequence[ServiceCall],
-    anonymous: str,
-) -> None:
-    assert recording.result is not None
-    row = (
-        recording.kind, recording.character_id, recording.started_at.timestamp(),
-        recording.result, int(_writing_own_keys(recording)), recording.time_to_speak_ms,
-        recording.call.row_id if recording.call is not None else None,
-        recording.duration_s, recording.end_reason, *_writing_judgement(recording),
-        recording.ended_conversation,
-    )
-    insert = (
-        "INSERT INTO activity_records (user_id, anonymous_id, kind, character_id,"
-        " started_at, result, own_keys, time_to_speak_ms, call_id, duration_s, end_reason,"
-        f" {', '.join(JUDGEMENT_COLUMNS)}, ended_conversation)"
-        f" VALUES ({', '.join('?' * (12 + len(JUDGEMENT_COLUMNS)))})"
-    )
-    try:
-        cursor = db.execute(insert, (recording.user_id, None, *row))
-    except sqlite3.IntegrityError:  # the user was deleted meanwhile
-        cursor = db.execute(insert, (None, anonymous, *row))
-    recording.row_id = cursor.lastrowid
-    _roll_up_records(db, "id = ?", (recording.row_id,))
-    for call in calls:
-        _insert_call(db, call, recording.row_id)
-
-
-def _insert_call_under(db: sqlite3.Connection, call: ServiceCall, into: Recording | None) -> None:
-    """Insert a service call under `into`, handed in to be written before it, or on its
-    own."""
-    _insert_call(db, call, into.row_id if into is not None else None)
-
-
-def _insert_call(db: sqlite3.Connection, call: ServiceCall, record_id: int | None) -> None:
-    origin, billed = call.origin, call.billed
-    cursor = db.execute(
-        "INSERT INTO service_calls (record_id, at, service, provider, model, own_key,"
-        " error, latency_ms, usage_unit, usage_input, usage_output, first_token_ms,"
-        " reasoning_effort, usage_cached, stripped_tags)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (
-            record_id, call.at.timestamp(), origin.service, origin.provider, origin.model,
-            int(origin.own_key), call.error, call.latency_ms, billed.unit, billed.input,
-            billed.output, call.first_token_ms, origin.effort, billed.cached,
-            json.dumps(call.stripped) if call.stripped is not None else None,
-        ),
-    )
-    _roll_up_calls(db, "id = ?", (cursor.lastrowid,))
-
-
-def _since(db: sqlite3.Connection, at: float) -> tuple[list[Any], list[Any]]:
-    records = db.execute(
-        "SELECT kind, COALESCE(user_id, anonymous_id), character_id, started_at, result,"
-        " own_keys, time_to_speak_ms, duration_s, end_reason, call_id IS NOT NULL,"
-        f" {', '.join(JUDGEMENT_COLUMNS)}, ended_conversation, answered"
-        " FROM activity_records WHERE started_at > ? ORDER BY started_at",
-        (at,),
-    ).fetchall()
-    calls = db.execute(
-        "SELECT service, provider, model, own_key, at, error, latency_ms, usage_unit,"
-        " usage_input, usage_output, first_token_ms, reasoning_effort, usage_cached,"
-        " stripped_tags FROM service_calls WHERE at > ? ORDER BY at",
-        (at,),
-    ).fetchall()
-    return records, calls
-
-
-def _billed_models(db: sqlite3.Connection, at: float) -> list[Any]:
-    return db.execute(
-        # The bare `service` is of the row whose `at` is the greatest.
-        "SELECT provider, model, usage_unit, service, MAX(at) FROM service_calls"
-        " WHERE at > ? AND own_key = 0 AND usage_unit IS NOT NULL"
-        " AND (usage_input IS NOT NULL OR usage_output IS NOT NULL)"
-        " GROUP BY provider, model, usage_unit",
-        (at,),
-    ).fetchall()
-
-
-def _deployer_calls_since(db: sqlite3.Connection, at: float) -> list[Any]:
-    return db.execute(
-        "SELECT service, COUNT(*), SUM(error IS NOT NULL) FROM service_calls"
-        " WHERE at > ? AND own_key = 0 GROUP BY service",
-        (at,),
-    ).fetchall()
-
-
-def _of_user(db: sqlite3.Connection, user_id: str, at: float) -> list[Any]:
-    return db.execute(
-        "SELECT kind, character_id, started_at, result, own_keys,"
-        " call_id IS NOT NULL FROM activity_records"
-        f" WHERE user_id = ? AND started_at > ? AND {TURNS_AND_CALLS}"
-        " ORDER BY started_at",
-        (user_id, at),
-    ).fetchall()
-
-
-def _taken_since(db: sqlite3.Connection, user_ids: list[str], at: float) -> list[Any]:
-    return db.execute(
-        "SELECT user_id, kind, COUNT(*) FROM activity_records"
-        f" WHERE user_id IN ({','.join('?' * len(user_ids))}) AND started_at > ?"
-        f" AND {TAKEN} AND {TURNS_AND_CALLS} GROUP BY user_id, kind",
-        [*user_ids, at],
-    ).fetchall()
-
-
-def _forget_calls_before(db: sqlite3.Connection, at: float, batch: int) -> int:
-    """Delete `batch` at most of the service calls up to `at`: how many it deleted."""
-    return db.execute(
-        "DELETE FROM service_calls WHERE id IN"
-        " (SELECT id FROM service_calls WHERE at <= ? LIMIT ?)",
-        (at, batch),
-    ).rowcount
-
-
-def _forget_records_before(db: sqlite3.Connection, at: float, batch: int) -> int:
-    """Delete `batch` at most of the records begun up to `at`: how many it deleted."""
-    return db.execute(
-        "DELETE FROM activity_records WHERE id IN"
-        " (SELECT id FROM activity_records WHERE started_at <= ? LIMIT ?)",
-        (at, batch),
-    ).rowcount
-
-
-def _forget_rollups_before(
-    db: sqlite3.Connection, table: str, length: int | None, before: float, batch: int
-) -> int:
-    """Delete `batch` at most of the rollups in `table` of slots (or days), `length` long
-    (None for a table of slots alone), that begin up to `before`: how many it deleted."""
-    # By their primary key, which their tables have in place of a row id.
-    key = ", ".join(
-        name for _, name in sorted(
-            (pk, name) for _, name, _, _, _, pk in db.execute(f"PRAGMA table_info({table})")
-            if pk
+    def _insert(self, recording: Recording, anonymous: str) -> None:
+        assert recording.result is not None
+        row = (
+            recording.kind, recording.character_id, recording.started_at.timestamp(),
+            recording.result, int(_writing_own_keys(recording)), recording.time_to_speak_ms,
+            recording.call.row_id if recording.call is not None else None,
+            recording.duration_s, recording.end_reason, *_writing_judgement(recording),
+            recording.ended_conversation,
         )
-    )
-    which, params = (
-        ("start <= ?", (before,)) if length is None
-        else ("length = ? AND start <= ?", (length, before))
-    )
-    return db.execute(
-        f"DELETE FROM {table} WHERE ({key}) IN"
-        f" (SELECT {key} FROM {table} WHERE {which} LIMIT ?)",
-        (*params, batch),
-    ).rowcount
+        insert = (
+            "INSERT INTO activity_records (user_id, anonymous_id, kind, character_id,"
+            " started_at, result, own_keys, time_to_speak_ms, call_id, duration_s, end_reason,"
+            f" {', '.join(JUDGEMENT_COLUMNS)}, ended_conversation)"
+            f" VALUES ({', '.join('?' * (12 + len(JUDGEMENT_COLUMNS)))})"
+        )
+        try:
+            cursor = self._db.execute(insert, (recording.user_id, None, *row))
+        except sqlite3.IntegrityError:  # the user was deleted meanwhile
+            cursor = self._db.execute(insert, (None, anonymous, *row))
+        recording.row_id = cursor.lastrowid
+        _roll_up_records(self._db, "id = ?", (recording.row_id,))
+        for call in recording.calls:
+            self._insert_call(call, recording.row_id)
+
+    def _insert_call(self, call: ServiceCall, record_id: int | None) -> None:
+        origin, billed = call.origin, call.billed
+        cursor = self._db.execute(
+            "INSERT INTO service_calls (record_id, at, service, provider, model, own_key,"
+            " error, latency_ms, usage_unit, usage_input, usage_output, first_token_ms,"
+            " reasoning_effort, usage_cached, stripped_tags)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                record_id, call.at.timestamp(), origin.service, origin.provider, origin.model,
+                int(origin.own_key), call.error, call.latency_ms, billed.unit, billed.input,
+                billed.output, call.first_token_ms, origin.effort, billed.cached,
+                json.dumps(call.stripped) if call.stripped is not None else None,
+            ),
+        )
+        _roll_up_calls(self._db, "id = ?", (cursor.lastrowid,))
+
+    def _forget_before(self, moment: datetime) -> None:
+        """Delete the records and service calls up to `moment`, and the rollups of the slots
+        and days over by then: one that is not holds some of those deleted still, as the
+        range it begins does (`range_start`)."""
+        at = moment.timestamp()
+        with self._lock, self._db:
+            self._db.execute("DELETE FROM service_calls WHERE at <= ?", (at,))
+            self._db.execute("DELETE FROM activity_records WHERE started_at <= ?", (at,))
+            for table in ("record_rollups", "user_rollups", "spread_rollups"):
+                for length in (SLOT, DAY):
+                    self._db.execute(
+                        f"DELETE FROM {table} WHERE length = ? AND start <= ?",
+                        (length, at - length),
+                    )
+            for table in ("taken_rollups", "call_rollups"):
+                self._db.execute(f"DELETE FROM {table} WHERE start <= ?", (at - SLOT,))
 
 
 def range_start(moment: datetime) -> datetime:
@@ -1267,7 +1132,7 @@ def _any_rolled_up(db: sqlite3.Connection) -> bool:
 
 def _answered_trigger() -> str:
     """The trigger that moves a reach-out's record, as it is marked answered, in the
-    rollups: the store marks it, in write tasks of its own."""
+    rollups: the store marks it, through a connection of its own."""
     moved = []
     for length in (SLOT, DAY):
         was = " AND ".join(
@@ -1600,11 +1465,10 @@ async def timed(
     started = perf_counter()
     billed = Billing()
     error: ErrorKind | None = None
-    failed: list[ServiceCall] = []
 
     def record_failed_attempt(failure: ServiceError) -> None:
         nonlocal started
-        failed.append(log.ended_call(origin, started, error_kind(failure), billed.take()))
+        log.call(origin, started, error_kind(failure), billed.take())
         started = perf_counter()
 
     try:
@@ -1616,9 +1480,7 @@ async def timed(
         error = error_kind(e)
         raise
     finally:
-        failed.append(log.ended_call(origin, started, error, billed, stripped=stripped))
-        for call in failed:
-            await log.record(call, recording())
+        log.call(origin, started, error, billed, stripped=stripped)
 
 
 class _MeteredLLM:
@@ -1663,7 +1525,7 @@ class _MeteredLLM:
         finally:
             if (close := getattr(stream, "aclose", None)) is not None:
                 await close()
-            await self._log.call(self._origin, started, error, billed, first_token_at)
+            self._log.call(self._origin, started, error, billed, first_token_at)
 
     async def aclose(self) -> None:
         pass  # whoever opened the model closes it
@@ -1742,9 +1604,10 @@ class MeteredJudge:
         text: str,
         affinity: bool = False,
         photo: bool = False,
+        tier: str | None = None,
     ) -> "tuple[Need, Judged | None, bool]":
         return await timed(
-            self._log, self._origin, self._judge.judge(character, history, text, affinity, photo)
+            self._log, self._origin, self._judge.judge(character, history, text, affinity, photo, tier=tier)
         )
 
 
@@ -1764,9 +1627,10 @@ class MeteredAffinityJudge:
         text: str,
         affinity: bool = True,
         photo: bool = False,
+        tier: str | None = None,
     ) -> "tuple[Judged | None, bool]":
         return await timed(
-            self._log, self._origin, self._judge.judge(character, history, text, affinity, photo)
+            self._log, self._origin, self._judge.judge(character, history, text, affinity, photo, tier=tier)
         )
 
 
