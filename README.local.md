@@ -1,7 +1,7 @@
 # 本地定制版说明
 
 这是基于 [Sallyn0225/eidolon-sc](https://github.com/Sallyn0225/eidolon-sc) 的**个人定制版**。
-上游的安装、配置、开发约定请看 `README.md`、`AGENTS.md` 和 `docs/`；这份文件只说明「和上游不一样的地方」。
+上游的安装、配置、开发约定请看 `README.md`、`AGENTS.md` 和 `docs/`；这份文件只说明「和上游不一样的地方」。**从零部署看 [`docs/deploy-fork.md`](docs/deploy-fork.md)。**
 
 ## 相比上游多了什么
 
