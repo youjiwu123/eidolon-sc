@@ -20,7 +20,7 @@
 ## 1. 拿到代码
 
 ```powershell
-git clone https://github.com/youjiwu123/eidolon-sc.git
+git clone https://github.com/youjiwu123/eidolon-sc-group-chat.git
 cd eidolon-sc
 ```
 
